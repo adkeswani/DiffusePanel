@@ -3,7 +3,7 @@
 // === Configuration ===
 #define NUM_LEDS    256
 #define DATA_PIN    D0      // Xiao ESP32C6 pin connected to WS2812B data line
-#define BRIGHTNESS  255     // Max brightness during fade peak
+#define BRIGHTNESS  150     // Max brightness during fade peak
 #define LED_TYPE    WS2812B
 #define COLOR_ORDER GRB
 

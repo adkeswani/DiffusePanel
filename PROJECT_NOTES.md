@@ -8,6 +8,7 @@
 
 ## Next Steps
 
-- Snap the 12x12 acrylic sheet by scoring 10-15 times using back edge of utility knife
-- Design a frame that holds the acrylic, the LED panel (probably using a grid to hold it), a diffuser layer (probably sheets of paper)
-- Print frame in PETG after the test prints, since that is more temp stable
+- Still printing frame in one piece because cutting and gluing also risks crookedness. Just need to put in a truss that gets cut off. - Done. Actually double-purposed the truss as the "grid" to support the panel
+- Increase depth of mask groove by 0.5mm to allow for paper to fit - done
+- Reduce distance between LEDs and mask layer by about 1.5mm (0.5mm from depth of mask groove + 1mm reduction) to avoid bleed - done
+- Need a sparse thin grid behind the LED panel to ensure it stays flat - done
