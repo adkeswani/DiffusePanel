@@ -34,9 +34,11 @@ python run_simulator.py
 patterns/           Python pattern files (simulator)
   base.py           Shared utilities: xy_to_index, hsv_to_rgb, Pattern base class
   bokeh.py          Soft glowing orbs fading in/out independently
-  ripple.py         Expanding rings from random points
+  ripple.py         Expanding rings from random points, like raindrops
   aurora.py         Slow drifting color blobs
   watercolor.py     Perlin noise morphing color fields
+  ring_fade.py      Thick ring with a rotating color wave that fades behind it
+  moon.py           Sphere with wandering 3D light source (Lambert shading)
 simulator/
   main.py           Pygame-ce display engine
 DiffusePanelPatterns/
@@ -92,12 +94,25 @@ The pattern API is designed so each Python pattern translates directly to C++:
 - Hue offset rotation maps to a simple `(inoise8(...) + frame_offset) % 256`
 - Full pattern becomes ~10 lines of C++ with `inoise8`
 
+**Ring Fade** (Easy-Moderate)
+- Concentric ring geometry uses only distance-from-center — precompute per-pixel or use squared distance
+- Rotating wave is just an angle comparison with `atan2` — replace with FastLED's `atan2_8()` or precomputed angle LUT
+- Color cycling is simple frame-count modular arithmetic
+- Fade-behind-wave logic is basic angular difference math
+
+**Moon** (Moderate)
+- Sphere normal computation: `nx = dx/r`, `ny = dy/r`, `nz = sqrt(1 - nx² - ny²)`
+- Replace `math.sqrt` with `sqrt16()` or precompute a radial LUT (only 6-pixel radius = ~113 pixels inside sphere)
+- Light direction uses layered sine waves — replace with `sin8()`/`cos8()` at different phase offsets
+- Lambert dot product is just 3 multiplies + 2 adds — trivial in integer math
+- Use 8.8 fixed point for normal components; final brightness fits in `uint8_t`
+
 ### Dependencies
 
 - Python 3.10+ with `pygame-ce` and `numpy`
 
 ## Next Steps
 
-- Somehow the depth of the acrylic groove went down, need to increase it back to where it was
-- Truss is interfering with wires on the LED panel
-- Reduce with by 1.5 - 2mm
+- Somehow the depth of the acrylic groove went down, need to increase it back to where it was - done
+- Truss is interfering with wires on the LED panel - done
+- Reduce with by 1.5 - 2mm - done, went with 1.5

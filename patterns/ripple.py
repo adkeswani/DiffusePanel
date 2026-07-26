@@ -18,9 +18,9 @@ class RippleSource:
         self.y = y
         self.hue = hue
         self.radius = 0.0
-        self.speed = random.uniform(0.08, 0.15)
-        self.max_radius = random.uniform(8.0, 14.0)
-        self.ring_width = 1.8  # How thick the visible ring is
+        self.speed = random.uniform(0.05, 0.10)
+        self.max_radius = random.uniform(10.0, 18.0)
+        self.ring_width = 2.2  # How thick the visible ring is
 
     @property
     def alive(self) -> bool:
@@ -61,7 +61,7 @@ class Ripple(Pattern):
             y = random.uniform(2, HEIGHT - 3)
             hue = random.choice(self.hue_options)
             self.ripples.append(RippleSource(x, y, hue))
-            self.spawn_cooldown = random.randint(40, 100)
+            self.spawn_cooldown = random.randint(80, 180)
 
         # Clear to dark
         for i in range(NUM_LEDS):

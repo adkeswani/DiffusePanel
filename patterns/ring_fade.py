@@ -25,8 +25,8 @@ class RingFade(Pattern):
         self.wave_width = math.pi * 0.8
 
     def update(self, leds: list, frame: int) -> None:
-        # Slowly cycling base hue
-        base_hue = int(frame * 0.1) % 256
+        # Cycling base hue
+        base_hue = int(frame * 0.18) % 256
 
         # Wave angle position
         wave_angle = frame * self.speed

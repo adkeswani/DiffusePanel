@@ -1,12 +1,8 @@
 """
-Moon - a circle of LEDs that wanes from full to crescent to new moon,
-then re-emerges with the next color in the cycle.
+Moon - a sphere lit by an orbiting light source.
 
-Uses proper crescent geometry: a shadow circle sweeps across the moon disk
-to carve out the classic crescent shape.
-
-Lifecycle per color:
-  Full moon → waning crescent → new moon (dark) → change color → waxing crescent → full moon
+The light rotates around the sphere, causing the illuminated side
+to sweep across the surface like lunar phases. Color slowly cycles.
 """
 
 import math
@@ -18,47 +14,41 @@ class Moon(Pattern):
 
     def __init__(self):
         super().__init__()
-        # Moon geometry
+        # Sphere geometry
         self.cx = (WIDTH - 1) / 2.0
         self.cy = (HEIGHT - 1) / 2.0
-        self.radius = 5.5
+        self.radius = 6.0
 
-        # How many frames for one full cycle (full -> new -> full)
-        self.cycle_frames = 1400  # ~23 seconds at 60fps for one complete cycle
+        # Light orbit speed: frames for one full orbit
+        self.orbit_frames = 600  # ~10 seconds at 60fps
 
     def update(self, leds: list, frame: int) -> None:
-        # Slow continuous hue cycle (not palette-stepped)
+        # Slow continuous hue cycle
         hue = int(frame * 0.08) % 256
         sat = 200
 
-        # Use a sine wave for perfectly smooth, continuous motion
-        # No segments, no transitions, no hitches
-        t = (frame % self.cycle_frames) / self.cycle_frames
-        # Sine goes from 0 to 1 to 0 smoothly with no discontinuities
-        phase = 0.5 * (1.0 + math.cos(t * 2 * math.pi))
-        # phase=1 at t=0 (full), phase=0 at t=0.5 (new), back to 1 at t=1
+        # Light wanders in 3D using layered sine waves at irrational ratios
+        # This creates smooth, never-repeating motion
+        t = frame / 60.0  # time in seconds
 
-        # Alternate shadow direction each half-cycle
-        # First half (waning): shadow comes from right
-        # Second half (waxing): shadow comes from left
-        if t < 0.5:
-            shadow_direction = 1.0
-        else:
-            shadow_direction = -1.0
+        # Multiple incommensurate frequencies for each axis
+        light_x = (math.sin(t * 0.47) * 0.6
+                   + math.sin(t * 0.31 + 1.7) * 0.3
+                   + math.sin(t * 0.79 + 4.2) * 0.1)
 
-        # Crescent geometry using two overlapping circles:
-        # The moon disk is centered at (cx, cy) with radius R.
-        # A shadow circle (LARGER than the moon) sweeps across it.
-        # Making the shadow larger ensures it fully covers the moon at phase=0
-        # and prevents edge artifacts.
-        shadow_radius = self.radius + 2.5  # Larger than moon to fully cover it
-        # Shadow center x-offset from moon center:
-        #   phase=1 (full): shadow is far away (no overlap with moon)
-        #   phase=0 (new): shadow centered on moon (fully covers it)
-        # Offset needed so shadow edge just clears moon at phase=1:
-        #   offset = shadow_radius + moon_radius (shadow completely off to one side)
-        max_offset = shadow_radius + self.radius
-        shadow_offset_x = phase * max_offset * shadow_direction
+        light_y = (math.sin(t * 0.53 + 2.1) * 0.6
+                   + math.sin(t * 0.37 + 0.3) * 0.3
+                   + math.sin(t * 0.83 + 5.1) * 0.1)
+
+        light_z = (math.cos(t * 0.41 + 1.0) * 0.5
+                   + math.cos(t * 0.67 + 3.3) * 0.3
+                   + 0.3)  # bias toward front so it's not dark too often
+
+        # Normalize to unit direction
+        light_len = math.sqrt(light_x * light_x + light_y * light_y + light_z * light_z)
+        light_x /= light_len
+        light_y /= light_len
+        light_z /= light_len
 
         for y in range(HEIGHT):
             for x in range(WIDTH):
@@ -66,35 +56,42 @@ class Moon(Pattern):
 
                 dx = x - self.cx
                 dy = y - self.cy
-                dist_from_center = math.sqrt(dx * dx + dy * dy)
+                dist = math.sqrt(dx * dx + dy * dy)
 
-                if dist_from_center <= self.radius + 0.5:
-                    # Inside or near the moon disk
+                if dist <= self.radius + 3.0:
+                    norm_dist = dist / self.radius
 
-                    # Soft circle edge
-                    circle_edge = max(0.0, min(1.0, (self.radius + 0.5 - dist_from_center) * 2.0))
+                    if norm_dist <= 1.0:
+                        # Surface normal of a sphere at this pixel
+                        # nx, ny from pixel offset; nz from hemisphere
+                        nx = dx / self.radius
+                        ny = dy / self.radius
+                        nz = math.sqrt(1.0 - norm_dist * norm_dist)
 
-                    # Distance from the shadow circle center
-                    shadow_cx = self.cx + shadow_offset_x
-                    sdx = x - shadow_cx
-                    sdy = y - self.cy
-                    dist_from_shadow = math.sqrt(sdx * sdx + sdy * sdy)
+                        # Lambert diffuse: dot(normal, light_dir)
+                        dot = nx * light_x + ny * light_y + nz * light_z
 
-                    # Pixel is lit if it's inside the moon disk but OUTSIDE the shadow
-                    # Use smooth transition at shadow boundary
-                    shadow_fade_width = 1.5  # pixels of soft edge on the shadow
-                    if dist_from_shadow >= shadow_radius + shadow_fade_width:
-                        # Fully outside shadow = fully lit
-                        lit = 1.0
-                    elif dist_from_shadow >= shadow_radius - shadow_fade_width:
-                        # In the soft boundary zone
-                        t = (dist_from_shadow - (shadow_radius - shadow_fade_width)) / (shadow_fade_width * 2)
-                        lit = t * t * (3.0 - 2.0 * t)  # smoothstep
+                        # Wide wrap lighting: large partial-shade zone
+                        # Maps dot from [-1,1] with heavy wrap so the
+                        # transition from lit to dark is broad and gradual
+                        lit = max(0.0, (dot + 0.7) / 1.7)
+                        # Smooth it with a softer curve
+                        lit = lit * lit
+
+                        # Ambient so dark side isn't pure black
+                        brightness = int(200 * (0.08 + 0.92 * lit))
                     else:
-                        # Inside shadow = dark
-                        lit = 0.0
+                        # Soft glow beyond sphere edge
+                        falloff = max(0.0, 1.0 - (dist - self.radius) / 3.0)
+                        glow = falloff * falloff
 
-                    brightness = int(200 * lit * circle_edge)
+                        # Glow is stronger on the lit side
+                        dx_n = dx / dist
+                        dy_n = dy / dist
+                        edge_dot = dx_n * light_x + dy_n * light_y
+                        edge_lit = max(0.0, (edge_dot + 0.2) / 1.2)
+
+                        brightness = int(60 * glow * edge_lit)
 
                     if brightness > 1:
                         leds[idx] = hsv_to_rgb(hue, sat, brightness)
