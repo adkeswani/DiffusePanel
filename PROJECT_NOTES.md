@@ -1,5 +1,50 @@
 # DiffusePanel - Project Notes
 
+## Overview
+
+A calm ambient 16×16 LED panel display that cycles through organic patterns with smooth transitions. Designed for relaxing background illumination.
+
+## Current Status (July 2026)
+
+### Arduino Firmware — COMPLETE (4 patterns ported)
+
+The firmware (`DiffusePanelPatterns/DiffusePanelPatterns.ino`) is fully functional with:
+
+| Setting | Value |
+|---------|-------|
+| Target board | ESP32-C6 (XIAO) |
+| LED type | WS2812B, 16×16 serpentine grid |
+| Data pin | D0 |
+| Brightness | 150/255 |
+| Power cap | 400mA (USB-safe) |
+| Pattern duration | 90 seconds |
+| Transitions | 3-second smoothstep fade-in/fade-out |
+| Frame rate | ~60 FPS (16ms delay) |
+
+#### Ported Patterns (in cycle order)
+
+1. **Plasma** — 3 drifting blobs with feathered edges, toroidal wrapping, purple/pink/magenta palette
+2. **Bokeh** — Per-LED independent fade-in/hold/fade-out orbs, orange palette, ~40% bloom on hold
+3. **Ripple** — Up to 4 concentric expanding rings from random points, teal/cyan/lavender palette
+4. **Ring Fade** — Thick ring with a rotating brightness wave, shared slow rainbow hue, partial white desaturation at the peak
+
+#### Pattern Cycling & Transitions
+
+- Patterns auto-cycle every 90 seconds
+- 3-second smoothstep fade-out starts at the end of each pattern's duration
+- After fade-out completes, the next pattern initializes and fades in over 3 seconds
+- Shared slow rainbow hue (`getSharedHue()`) cycles full spectrum every ~70 seconds
+- `hueOffset` is randomized on each pattern switch for variety
+
+### Patterns NOT Yet Ported to Arduino
+
+- **Aurora** — Slow drifting color blobs (exists in Python simulator)
+- **Watercolor** — Perlin noise morphing color fields (exists in Python simulator)
+- **Moon** — Sphere with wandering 3D light source (exists in Python simulator)
+- **Ring Wave** — (exists in Python simulator)
+
+---
+
 ## Parts List
 
 - **LED Panel**: BTF-LIGHTING Individual Addressable Flexible RGB LED Panel — https://www.amazon.com/BTF-LIGHTING-Individual-Addressable-Flexible-Controllers/dp/B088BTYJH6/
@@ -8,7 +53,7 @@
 
 ## LED Simulator
 
-A local 16x16 LED panel simulator for testing patterns before uploading to hardware.
+A local 16×16 LED panel simulator for testing patterns before uploading to hardware.
 
 ### Running the Simulator
 
@@ -38,11 +83,15 @@ patterns/           Python pattern files (simulator)
   aurora.py         Slow drifting color blobs
   watercolor.py     Perlin noise morphing color fields
   ring_fade.py      Thick ring with a rotating color wave that fades behind it
+  ring_wave.py      Ring wave pattern
   moon.py           Sphere with wandering 3D light source (Lambert shading)
 simulator/
   main.py           Pygame-ce display engine
 DiffusePanelPatterns/
-  DiffusePanelPatterns.ino   Arduino template with ported patterns
+  DiffusePanelPatterns.ino   Arduino firmware (all 4 ported patterns + auto-cycling)
+DiffusePanelTest/
+  DiffusePanelTest.ino       Hardware test sketch
+diffusePanel.3mf             3D-printable frame/mask model
 ```
 
 ### Porting Patterns to Arduino
@@ -66,20 +115,9 @@ The pattern API is designed so each Python pattern translates directly to C++:
 - **No hardware FPU** — Use integer math (`uint8_t`, `uint16_t`, `int16_t`) wherever possible
 - **Budget**: ~6ms per frame for pattern logic (WS2812B data for 256 LEDs takes ~7ms at 800kHz)
 - FastLED provides optimized helpers: `sin8()`, `cos8()`, `sqrt16()`, `inoise8()`, `qadd8()`, `qsub8()`
+- Current firmware uses float math and runs fine — optimize only if frame budget becomes tight
 
-#### Per-Pattern Porting Notes
-
-**Bokeh** (Easy)
-- Per-LED state machine with basic arithmetic — ports almost directly
-- Each orb struct uses ~10 bytes × 256 = ~2.5KB RAM (fine for ESP32-C6's 512KB)
-- Replace smoothstep with integer approximation: `t = (t * t * (768 - 256 * t)) >> 16` (8-bit fixed point)
-- The palette cycling uses simple frame-count modular math
-
-**Ripple** (Easy-Moderate)
-- Only 4 active ripple sources at a time × 256 pixels = 1024 distance checks per frame
-- Replace `math.sqrt` with squared-distance comparison: compare `dx*dx + dy*dy` against `radius_squared`
-- Use `uint16_t` for distance math (values max at 16² + 16² = 512, fits fine)
-- Ring intensity: precompute ring inner/outer radius² for fast range check
+#### Per-Pattern Porting Notes (for remaining patterns)
 
 **Aurora** (Moderate)
 - 6 blobs × 256 pixels = 1536 distance checks per frame
@@ -94,12 +132,6 @@ The pattern API is designed so each Python pattern translates directly to C++:
 - Hue offset rotation maps to a simple `(inoise8(...) + frame_offset) % 256`
 - Full pattern becomes ~10 lines of C++ with `inoise8`
 
-**Ring Fade** (Easy-Moderate)
-- Concentric ring geometry uses only distance-from-center — precompute per-pixel or use squared distance
-- Rotating wave is just an angle comparison with `atan2` — replace with FastLED's `atan2_8()` or precomputed angle LUT
-- Color cycling is simple frame-count modular arithmetic
-- Fade-behind-wave logic is basic angular difference math
-
 **Moon** (Moderate)
 - Sphere normal computation: `nx = dx/r`, `ny = dy/r`, `nz = sqrt(1 - nx² - ny²)`
 - Replace `math.sqrt` with `sqrt16()` or precompute a radial LUT (only 6-pixel radius = ~113 pixels inside sphere)
@@ -110,9 +142,16 @@ The pattern API is designed so each Python pattern translates directly to C++:
 ### Dependencies
 
 - Python 3.10+ with `pygame-ce` and `numpy`
+- Arduino IDE / PlatformIO with FastLED library
+- Board support: ESP32-C6 (Seeed XIAO ESP32C6)
+
+## Hardware / Enclosure Notes
+
+- Need a way to keep a flat LED panel, so we'll need to stick a solid grid on the back, might need trusses on the grid? No, they aren't long arms
+- Thicken the mask too so it doesn't warp
+- And then update the grooves accordingly
+- 3D model is in `diffusePanel.3mf`
 
 ## Next Steps
-
-- Somehow the depth of the acrylic groove went down, need to increase it back to where it was - done
-- Truss is interfering with wires on the LED panel - done
-- Reduce with by 1.5 - 2mm - done, went with 1.5
+[ ] Finalize the patterns, especially blobs.
+[ ] Maybe attach the power code with another zip tie to reduce strain.

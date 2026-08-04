@@ -1,39 +1,55 @@
 /*
- * DiffusePanel - Arduino Pattern Template
- * ========================================
- * This sketch mirrors the Python simulator's pattern API.
- * To port a pattern from the simulator:
- *   1. Copy the update() logic into the corresponding updatePattern() function
- *   2. Replace Python math with Arduino equivalents (see mapping below)
- *
- * === Python -> Arduino Mapping ===
- *
- *   Python                     Arduino/FastLED
- *   ------                     ---------------
- *   hsv_to_rgb(h, s, v)        CHSV(h, s, v)
- *   leds[idx] = (r, g, b)      leds[idx] = CRGB(r, g, b)
- *   xy_to_index(x, y)          xyToIndex(x, y)
- *   math.sin(x)                sin8(x) or sin16(x)
- *   random.randint(a, b)       random8(a, b) or random16(a, b)
- *   frame counter              Passed as argument or use millis()
- *   WIDTH, HEIGHT              WIDTH, HEIGHT (constants below)
+ * DiffusePanel - All Patterns with Auto-Cycling
+ * ==============================================
+ * Cycles through all patterns every 10 seconds.
+ * Define POWER_WALL for 2.5A wall adapter, otherwise defaults to USB-safe.
  */
 
 #include <FastLED.h>
+
+// === Power Profile ===
+// Uncomment ONE of the following:
+// #define POWER_WALL   // 5V 2.5A wall adapter
+#define POWER_WALL       // USB port (500mA nominal, capped at 400mA)
+
+#ifdef POWER_WALL
+  #define BRIGHTNESS       255    // Full range; FastLED power cap keeps draw safe
+  #define MAX_MILLIAMPS    2500   // 2.5A wall supply
+  // At 2500mA / 256 LEDs ≈ 9.8mA per LED headroom.
+  // With sparse blob patterns (~20-30% lit), effective per-pixel brightness is high.
+  // FastLED dynamically scales if a frame would exceed the cap.
+#else
+  #define BRIGHTNESS       150    // Conservative for USB
+  #define MAX_MILLIAMPS    400    // USB-safe power cap
+#endif
 
 // === Hardware Configuration ===
 #define DATA_PIN    D0
 #define LED_TYPE    WS2812B
 #define COLOR_ORDER GRB
-#define BRIGHTNESS  150
 
 // === Panel Configuration ===
 #define WIDTH       16
 #define HEIGHT      16
 #define NUM_LEDS    (WIDTH * HEIGHT)
 
+// === Pattern Cycling ===
+#define PATTERN_DURATION_MS  90000  // 90 seconds per pattern
+#define TRANSITION_MS        3000   // 3 second fade transitions
+#define NUM_PATTERNS         5
+
 CRGB leds[NUM_LEDS];
 uint32_t frame = 0;
+uint8_t currentPattern = 0;
+uint32_t lastPatternSwitch = 0;
+bool transitioning = false;
+uint32_t transitionStart = 0;
+bool fadingIn = true;  // true = fading in at start, false = fading out before switch
+
+// Forward declarations for structs (needed by Arduino auto-prototyping)
+struct BokehOrb;
+struct FeatheredStalk;
+void bokehResetOrb(BokehOrb &o);
 
 // === Coordinate Mapping (serpentine wiring) ===
 uint16_t xyToIndex(uint8_t x, uint8_t y) {
@@ -44,95 +60,634 @@ uint16_t xyToIndex(uint8_t x, uint8_t y) {
   }
 }
 
-// === Pattern: Rainbow Wave ===
-// Ported from: patterns/rainbow_wave.py
-void patternRainbowWave() {
-  for (uint8_t y = 0; y < HEIGHT; y++) {
-    for (uint8_t x = 0; x < WIDTH; x++) {
-      uint8_t hue = (x * 8 + y * 8 + frame * 2) % 256;
-      uint16_t idx = xyToIndex(x, y);
-      leds[idx] = CHSV(hue, 255, 255);
-    }
-  }
+// === Shared slow rainbow hue (full spectrum cycle) ===
+// Completes one full cycle every ~70 seconds at 60fps
+static uint8_t hueOffset = 0;  // Random start hue, re-rolled each pattern switch
+static int8_t hueDirection = 1;  // +1 or -1, randomized each pattern switch
+
+uint8_t getSharedHue() {
+  return (uint8_t)(frame * 0.06f * hueDirection) + hueOffset;
 }
 
-// === Pattern: Plasma ===
-// Ported from: patterns/plasma.py
-void patternPlasma() {
-  uint8_t t = frame;
-  for (uint8_t y = 0; y < HEIGHT; y++) {
-    for (uint8_t x = 0; x < WIDTH; x++) {
-      // Use sin8 for fast integer sine (0-255 output)
-      uint8_t v1 = sin8(x * 19 + t * 3);
-      uint8_t v2 = sin8(y * 19 + t * 2);
-      uint8_t v3 = sin8((x + y) * 13 + t);
-      uint8_t v4 = sin8(sqrt16(x * x * 64 + y * y * 64) + t * 4);
-
-      uint8_t hue = (v1 + v2 + v3 + v4) / 4;
-      uint16_t idx = xyToIndex(x, y);
-      leds[idx] = CHSV(hue, 255, 255);
-    }
-  }
+static inline float smoothstep(float t) {
+  t = constrain(t, 0.0f, 1.0f);
+  return t * t * (3.0f - 2.0f * t);
 }
 
-// === Pattern: Fire ===
-// Ported from: patterns/fire.py
-static uint8_t heat[HEIGHT][WIDTH];
+// ============================================================
+// ============================================================
+// Pattern: Botanical Field (smooth noise-driven green canopy)
+// ============================================================
 
-void patternFire() {
-  uint8_t cooling = 55;
-  uint8_t sparking = 120;
+static int8_t botanicalDirX = 1;  // +1 or -1
+static int8_t botanicalDirY = 1;  // +1 or -1
+
+void featheredGrassInit() {
+  botanicalDirX = (random8() < 128) ? 1 : -1;
+  botanicalDirY = (random8() < 128) ? 1 : -1;
+}
+
+void patternFeatheredGrass() {
+  uint32_t ms = millis();
+
+  // Time offsets: two different speeds, direction randomized at init
+  // Negation is done by subtracting from 0 — uint16_t wrapping is fine for noise input
+  uint16_t rawX = (uint16_t)(ms / 9);
+  uint16_t rawY = (uint16_t)(ms / 12);
+  uint16_t timeX = (botanicalDirX > 0) ? rawX : (uint16_t)(0 - rawX);
+  uint16_t timeY = (botanicalDirY > 0) ? rawY : (uint16_t)(0 - rawY);
+
+  // Scale determines noise feature size
+  uint16_t fieldScale = 24;
 
   for (uint8_t x = 0; x < WIDTH; x++) {
-    // Cool down
     for (uint8_t y = 0; y < HEIGHT; y++) {
-      uint8_t cool = random8(0, ((cooling * 10) / HEIGHT) + 2);
-      heat[y][x] = qsub8(heat[y][x], cool);
-    }
 
-    // Heat rises
-    for (uint8_t y = HEIGHT - 1; y >= 2; y--) {
-      heat[y][x] = (heat[y-1][x] + heat[y-2][x] + heat[y-2][x]) / 3;
-    }
+      // Map grid to moving noise space
+      uint16_t noiseX = (y * fieldScale) + timeX;
+      uint16_t noiseY = (x * fieldScale) + timeY;
 
-    // Sparks
-    if (random8() < sparking) {
-      uint8_t sy = random8(0, 2);
-      heat[sy][x] = qadd8(heat[sy][x], random8(160, 255));
-    }
-  }
+      // Master intensity map
+      uint8_t intensity = inoise8(noiseX, noiseY);
 
-  // Map heat to colors
-  for (uint8_t y = 0; y < HEIGHT; y++) {
-    for (uint8_t x = 0; x < WIDTH; x++) {
-      uint16_t idx = xyToIndex(x, y);
-      // HeatColor is a built-in FastLED function
-      leds[idx] = HeatColor(heat[y][x]);
+      // Secondary hue morph (independent offset)
+      uint8_t hueMorph = inoise8(noiseX + 5000, noiseY + 3000);
+
+      // Nature palette: jade (112) to emerald (96)
+      uint8_t baseHue = map(hueMorph, 0, 255, 96, 112);
+      uint8_t saturation = 245;
+
+      // Brightness: dark lows, moderate highs
+      uint8_t brightness = map(intensity, 0, 255, 10, 110);
+
+      CRGB cellColor = CHSV(baseHue, saturation, brightness);
+
+      // Highlight glow: golden accent at intensity peaks
+      if (intensity > 185) {
+        uint8_t blendAmount = map(intensity, 185, 255, 0, 120);
+        cellColor = blend(cellColor, CRGB(180, 200, 20), blendAmount);
+      }
+
+      leds[xyToIndex(x, y)] = cellColor;
     }
   }
 }
 
-// === Main ===
+// ============================================================
+// Wrapper init/pattern functions for slot compatibility
+// ============================================================
+void patternFallingLeaves() { patternFeatheredGrass(); }
+void leavesInit() { featheredGrassInit(); }
+
+// ============================================================
+// Pattern: Bokeh
+// Soft glowing orbs that fade in/out independently per LED.
+// ============================================================
+#define BOKEH_STATE_SLEEPING   0
+#define BOKEH_STATE_FADING_IN  1
+#define BOKEH_STATE_HOLDING    2
+#define BOKEH_STATE_FADING_OUT 3
+
+struct BokehOrb {
+  uint8_t state;
+  uint16_t frameInState;
+  uint16_t sleepFrames;
+  uint16_t fadeInDuration;
+  uint16_t holdDuration;
+  uint16_t fadeOutDuration;
+  uint8_t maxBrightness;
+  uint8_t blooms;       // bool
+  uint8_t bloomAmount;
+};
+
+static BokehOrb bokehOrbs[NUM_LEDS];
+
+#define BOKEH_SAT 240
+
+void bokehResetOrb(BokehOrb &o) {
+  o.state = BOKEH_STATE_SLEEPING;
+  o.frameInState = 0;
+  o.sleepFrames = random16(30, 200);
+  o.fadeInDuration = random8(40, 120);
+  o.holdDuration = random8(20, 80);
+  o.fadeOutDuration = random8(50, 150);
+  o.maxBrightness = random8(140, 255);
+  o.blooms = (random8() < 102) ? 1 : 0;  // ~40%
+  o.bloomAmount = o.blooms ? random8(80, 160) : 0;
+}
+
+void bokehInit() {
+  for (uint16_t i = 0; i < NUM_LEDS; i++) {
+    bokehResetOrb(bokehOrbs[i]);
+    bokehOrbs[i].sleepFrames = random16(0, 180);  // stagger starts
+  }
+}
+
+void patternBokeh() {
+  // Cycle in orange range (hue 16-22) with random start
+  uint8_t hue = 16 + (sin8((frame / 4) + hueOffset) * 6 / 255);
+  uint8_t palSat = BOKEH_SAT;
+
+  for (uint16_t i = 0; i < NUM_LEDS; i++) {
+    BokehOrb &o = bokehOrbs[i];
+    o.frameInState++;
+
+    uint8_t brightness = 0;
+    uint8_t sat = palSat;
+
+    switch (o.state) {
+      case BOKEH_STATE_SLEEPING:
+        if (o.frameInState >= o.sleepFrames) {
+          o.state = BOKEH_STATE_FADING_IN;
+          o.frameInState = 0;
+        }
+        leds[i] = CRGB::Black;
+        continue;
+
+      case BOKEH_STATE_FADING_IN: {
+        float t = smoothstep((float)o.frameInState / o.fadeInDuration);
+        brightness = (uint8_t)(o.maxBrightness * t);
+        if (o.frameInState >= o.fadeInDuration) {
+          o.state = BOKEH_STATE_HOLDING;
+          o.frameInState = 0;
+        }
+        break;
+      }
+
+      case BOKEH_STATE_HOLDING: {
+        brightness = o.maxBrightness;
+        float t = (float)o.frameInState / o.holdDuration;
+        if (o.blooms) {
+          sat = max(0, (int16_t)palSat - (int16_t)(o.bloomAmount * smoothstep(t)));
+        }
+        if (o.frameInState >= o.holdDuration) {
+          o.state = BOKEH_STATE_FADING_OUT;
+          o.frameInState = 0;
+        }
+        break;
+      }
+
+      case BOKEH_STATE_FADING_OUT: {
+        float t = smoothstep(1.0f - (float)o.frameInState / o.fadeOutDuration);
+        brightness = (uint8_t)(o.maxBrightness * t);
+        float bloomRemaining = max(0.0f, 1.0f - (float)o.frameInState / o.fadeOutDuration);
+        if (o.blooms) {
+          sat = max(0, (int16_t)palSat - (int16_t)(o.bloomAmount * bloomRemaining));
+        }
+        if (o.frameInState >= o.fadeOutDuration) {
+          bokehResetOrb(o);
+        }
+        break;
+      }
+    }
+
+    if (brightness > 0) {
+      leds[i] = CHSV(hue, sat, brightness);
+    } else {
+      leds[i] = CRGB::Black;
+    }
+  }
+}
+
+// ============================================================
+// Pattern: Ripple
+// Expanding ring ripples from random points, like raindrops.
+// ============================================================
+#define RIPPLE_MAX_ACTIVE 4
+
+struct RippleSource {
+  float x, y;
+  float radius;
+  float speed;
+  float maxRadius;
+  float ringWidth;
+  uint8_t hue;
+  bool active;
+};
+
+static RippleSource ripples[RIPPLE_MAX_ACTIVE];
+static int16_t rippleSpawnCooldown = 0;
+
+void rippleInit() {
+  for (uint8_t i = 0; i < RIPPLE_MAX_ACTIVE; i++) {
+    ripples[i].active = false;
+  }
+  rippleSpawnCooldown = 0;
+}
+
+void patternRipple() {
+  // Spawn logic
+  rippleSpawnCooldown--;
+  uint8_t activeCount = 0;
+  for (uint8_t i = 0; i < RIPPLE_MAX_ACTIVE; i++) {
+    if (ripples[i].active) activeCount++;
+  }
+
+  if (rippleSpawnCooldown <= 0 && activeCount < RIPPLE_MAX_ACTIVE) {
+    for (uint8_t i = 0; i < RIPPLE_MAX_ACTIVE; i++) {
+      if (!ripples[i].active) {
+        ripples[i].x = 2.0f + random8(0, WIDTH - 4);
+        ripples[i].y = 2.0f + random8(0, HEIGHT - 4);
+        ripples[i].radius = 0.0f;
+        ripples[i].speed = 0.05f + random8(0, 5) / 100.0f;
+        ripples[i].maxRadius = 10.0f + random8(0, 8);
+        ripples[i].ringWidth = 2.2f;
+        // Teal / cyan / aqua range (hue 120-170, avoids full green)
+        ripples[i].hue = 120 + random8(0, 50);
+        ripples[i].active = true;
+        break;
+      }
+    }
+    rippleSpawnCooldown = random16(140, 207);
+  }
+
+  // Clear
+  fill_solid(leds, NUM_LEDS, CRGB::Black);
+
+  // Draw ripples
+  for (uint8_t y = 0; y < HEIGHT; y++) {
+    for (uint8_t x = 0; x < WIDTH; x++) {
+      uint16_t idx = xyToIndex(x, y);
+      float totalIntensity = 0.0f;
+      float blendedHue = 0.0f;
+
+      for (uint8_t i = 0; i < RIPPLE_MAX_ACTIVE; i++) {
+        if (!ripples[i].active) continue;
+        float dx = x - ripples[i].x;
+        float dy = y - ripples[i].y;
+        float dist = sqrtf(dx * dx + dy * dy);
+        float ringDist = fabsf(dist - ripples[i].radius);
+        if (ringDist > ripples[i].ringWidth) continue;
+
+        float ringIntensity = 1.0f - (ringDist / ripples[i].ringWidth);
+        float ageFade = 1.0f - (ripples[i].radius / ripples[i].maxRadius);
+        float intensity = ringIntensity * ageFade * ageFade;
+
+        totalIntensity += intensity;
+        blendedHue += ripples[i].hue * intensity;
+      }
+
+      if (totalIntensity > 0.0f) {
+        uint8_t hue = (uint8_t)((int)(blendedHue / totalIntensity) % 256);
+        uint8_t brightness = min(200, (int)(totalIntensity * 200));
+        leds[idx] = CHSV(hue, 240, brightness);
+      }
+    }
+  }
+
+  // Advance and cull
+  for (uint8_t i = 0; i < RIPPLE_MAX_ACTIVE; i++) {
+    if (!ripples[i].active) continue;
+    ripples[i].radius += ripples[i].speed;
+    if (ripples[i].radius >= ripples[i].maxRadius) {
+      ripples[i].active = false;
+    }
+  }
+}
+
+// ============================================================
+// Pattern: Ring Fade
+// A thick glowing ring where a wave front sweeps around,
+// changing the ring color behind it to a new hue.
+// ============================================================
+static float ringStartAngle = 0.0f;
+static float ringDirection = 1.0f;  // +1 or -1
+static float ringWaveAngle = 0.0f;
+static uint8_t ringCurrentHue = 0;
+static uint8_t ringNextHue = 0;
+static float ringLastWaveAngle = 0.0f;
+static float ringAccumulated = 0.0f;
+static uint8_t ringBaseHueOffset = 0;  // Random start color
+
+void ringFadeInit() {
+  ringStartAngle = random16(0, 628) / 100.0f;  // Random start 0 to 2*PI
+  ringDirection = (random8() < 128) ? 1.0f : -1.0f;  // Random direction
+  ringCurrentHue = random8();
+  ringNextHue = ringCurrentHue + 50 + random8(0, 40);
+  ringWaveAngle = ringStartAngle;
+  ringLastWaveAngle = ringWaveAngle;
+  ringAccumulated = 0.0f;
+  ringBaseHueOffset = random8();  // Start at random color
+}
+
+void patternRingFade() {
+  const float cx = (WIDTH - 1) / 2.0f;
+  const float cy = (HEIGHT - 1) / 2.0f;
+  const float ringRadius = 5.8f;
+  const float ringThickness = 2.8f;
+
+  // How fast the "peak" rotates around the ring
+  const float peakRotateSpeed = 0.035f;
+  // How fast the base hue drifts through the spectrum
+  const float hueShiftSpeed = 0.12f;
+  // How many hue steps the peak deviates from the base
+  const float peakDeviation = 50.0f;
+
+  float peakAngle = fmodf(frame * peakRotateSpeed * ringDirection + ringStartAngle, 2.0f * PI);
+  float baseHue = fmodf(frame * hueShiftSpeed * hueDirection + ringBaseHueOffset + 256.0f, 256.0f);
+
+  for (uint8_t y = 0; y < HEIGHT; y++) {
+    for (uint8_t x = 0; x < WIDTH; x++) {
+      uint16_t idx = xyToIndex(x, y);
+      float dx = x - cx;
+      float dy = y - cy;
+      float dist = sqrtf(dx * dx + dy * dy);
+      float ringDist = fabsf(dist - ringRadius);
+
+      if (ringDist < ringThickness) {
+        // Quadratic falloff at edges
+        float t = 1.0f - (ringDist / ringThickness);
+        float ringFade = t * t;
+
+        float pixelAngle = atan2f(dy, dx);
+
+        // Angular distance from the peak (0 to PI)
+        float angDist = fmodf(fabsf(pixelAngle - peakAngle) + 4.0f * PI, 2.0f * PI);
+        if (angDist > PI) angDist = 2.0f * PI - angDist;
+
+        // Smooth bell curve: full deviation at peak, zero at opposite side
+        float peakInfluence = 0.5f * (1.0f + cosf(angDist));
+
+        // Hue = base hue + peak deviation scaled by influence
+        float hueF = baseHue + peakDeviation * peakInfluence;
+        uint8_t hue = (uint8_t)((int)(hueF + 256.0f) % 256);
+
+        uint8_t rawBrightness = (uint8_t)(190.0f * ringFade);
+        if (rawBrightness == 0) {
+          leds[idx] = CRGB::Black;
+          continue;
+        }
+
+        leds[idx] = CHSV(hue, 230, rawBrightness);
+      } else {
+        leds[idx] = CRGB::Black;
+      }
+    }
+  }
+}
+
+// ============================================================
+// Pattern: Starfield
+// Twinkling points at varied brightness. Cool white with
+// occasional warm yellow or cyan-white tinted stars.
+// ============================================================
+#define STAR_COUNT       50     // Max simultaneous twinkling stars
+
+struct Star {
+  float fx, fy;       // Sub-pixel position for anti-aliasing
+  uint16_t age;
+  uint16_t fadeInLen;
+  uint16_t holdLen;
+  uint16_t fadeOutLen;
+  uint8_t maxBri;
+  uint8_t hue;
+  uint8_t sat;
+  bool active;
+};
+
+static Star stars[STAR_COUNT];
+static uint8_t starSpawnTimer = 0;
+static float starLissT = 0.0f;        // Parameter along Lissajous curve
+static float starLissA = 3.0f;        // X frequency
+static float starLissB = 2.0f;        // Y frequency
+static float starLissDelta = 0.0f;    // Phase offset
+
+#define STAR_SPAWN_INTERVAL 3   // Spawn one star every 3 frames (~20 per second)
+#define STAR_LISS_STEP 0.37f    // How far along the curve each spawn advances
+
+void starfieldInit() {
+  for (uint8_t i = 0; i < STAR_COUNT; i++) {
+    stars[i].active = false;
+  }
+  starSpawnTimer = 0;
+  starLissT = random16(0, 628) / 100.0f;  // Random start point on curve
+  // Pick from irrational-ratio pairs so the curve never repeats
+  uint8_t pick = random8(0, 5);
+  switch (pick) {
+    case 0: starLissA = 3.0f;  starLissB = 2.236f; break;  // √5
+    case 1: starLissA = 2.0f;  starLissB = 3.1416f; break; // π (was 3+π, too fast)
+    case 2: starLissA = 2.0f;  starLissB = 2.618f; break;  // φ+1 (golden)
+    case 3: starLissA = 2.618f; starLissB = 2.0f; break;   // φ+1 (was 4+π, too fast)
+    case 4: starLissA = 2.236f; starLissB = 3.0f; break;   // √5
+  }
+  starLissDelta = random16(0, 628) / 100.0f;  // Random phase offset
+}
+
+static void starSpawn(uint8_t idx) {
+  Star &s = stars[idx];
+  // Position from Lissajous curve, mapped to panel coordinates (sub-pixel)
+  float rawX = sinf(starLissA * starLissT + starLissDelta);  // -1 to 1
+  float rawY = sinf(starLissB * starLissT);                   // -1 to 1
+  s.fx = (rawX * 0.45f + 0.5f) * (WIDTH - 1);   // 0.0 .. WIDTH-1
+  s.fy = (rawY * 0.45f + 0.5f) * (HEIGHT - 1);  // 0.0 .. HEIGHT-1
+  // Clamp
+  if (s.fx < 0.0f) s.fx = 0.0f;
+  if (s.fx > WIDTH - 1) s.fx = WIDTH - 1;
+  if (s.fy < 0.0f) s.fy = 0.0f;
+  if (s.fy > HEIGHT - 1) s.fy = HEIGHT - 1;
+  // Gentle velocity compensation: slightly larger steps at slow points
+  float dx = starLissA * cosf(starLissA * starLissT + starLissDelta);
+  float dy = starLissB * cosf(starLissB * starLissT);
+  float speed = sqrtf(dx * dx + dy * dy);
+  float maxSpeed = sqrtf(starLissA * starLissA + starLissB * starLissB);
+  // Blend between 1.0 and a mild boost (max 1.5x) at slow points
+  float speedRatio = speed / maxSpeed;  // 0 to 1
+  float speedFactor = 1.0f + (1.0f - speedRatio) * 0.5f;  // 1.0 to 1.5
+  float baseStep = 0.02f + random8(0, 3) / 100.0f;  // 0.02–0.05 (~30% slower)
+  starLissT += baseStep * speedFactor;
+  s.age = 0;
+  s.fadeInLen = 8;
+  s.holdLen = 15;
+  s.fadeOutLen = 40;
+  s.maxBri = 255;  // Always reach full brightness
+  // Pure white with slight blue tint
+  s.hue = 160;
+  s.sat = 30 + random8(0, 30);  // 30-60, subtle blue-white
+  s.active = true;
+}
+
+void patternStarfield() {
+  fill_solid(leds, NUM_LEDS, CRGB::Black);
+
+  // --- Twinkling stars ---
+  starSpawnTimer++;
+  if (starSpawnTimer >= STAR_SPAWN_INTERVAL) {
+    starSpawnTimer = 0;
+    for (uint8_t i = 0; i < STAR_COUNT; i++) {
+      if (!stars[i].active) {
+        starSpawn(i);
+        break;
+      }
+    }
+  }
+
+  for (uint8_t i = 0; i < STAR_COUNT; i++) {
+    Star &s = stars[i];
+    if (!s.active) continue;
+    s.age++;
+
+    uint16_t totalLife = s.fadeInLen + s.holdLen + s.fadeOutLen;
+    if (s.age >= totalLife) {
+      s.active = false;
+      continue;
+    }
+
+    float t;
+    if (s.age < s.fadeInLen) {
+      t = (float)s.age / s.fadeInLen;
+      t = t * t;  // Ease-in
+    } else if (s.age < s.fadeInLen + s.holdLen) {
+      t = 1.0f;
+    } else {
+      uint16_t fadeAge = s.age - s.fadeInLen - s.holdLen;
+      t = 1.0f - (float)fadeAge / s.fadeOutLen;
+      t = t * t;  // Ease-out
+    }
+
+    uint8_t bri = (uint8_t)(t * s.maxBri);
+    if (bri < 2) continue;
+
+    // Bilinear anti-alias: splat brightness across up to 4 neighbouring pixels
+    uint8_t x0 = (uint8_t)s.fx;
+    uint8_t y0 = (uint8_t)s.fy;
+    uint8_t x1 = (x0 < WIDTH - 1)  ? x0 + 1 : x0;
+    uint8_t y1 = (y0 < HEIGHT - 1) ? y0 + 1 : y0;
+    float xf = s.fx - x0;  // Fractional part 0..1
+    float yf = s.fy - y0;
+    // Weights for the 4 corners
+    float w00 = (1.0f - xf) * (1.0f - yf);
+    float w10 = xf * (1.0f - yf);
+    float w01 = (1.0f - xf) * yf;
+    float w11 = xf * yf;
+    CHSV color(s.hue, s.sat, 0);
+    uint8_t b;
+    b = (uint8_t)(bri * w00); if (b > 1) { color.val = b; leds[xyToIndex(x0, y0)] += color; }
+    b = (uint8_t)(bri * w10); if (b > 1) { color.val = b; leds[xyToIndex(x1, y0)] += color; }
+    b = (uint8_t)(bri * w01); if (b > 1) { color.val = b; leds[xyToIndex(x0, y1)] += color; }
+    b = (uint8_t)(bri * w11); if (b > 1) { color.val = b; leds[xyToIndex(x1, y1)] += color; }
+  }
+}
+
+// ============================================================
+// Pattern Switching
+// ============================================================
+typedef void (*PatternFunc)();
+
+PatternFunc patterns[] = {
+  patternBokeh,
+  patternRipple,
+  patternFeatheredGrass,
+  patternStarfield,
+  patternRingFade,
+};
+
+void resetPatternState() {
+  // Re-initialize stateful patterns when switching
+  // Randomize shared hue offset and direction
+  hueOffset = random8();
+  hueDirection = (random8() < 128) ? 1 : -1;
+  switch (currentPattern) {
+    case 0: bokehInit(); break;
+    case 1: rippleInit(); break;
+    case 2: featheredGrassInit(); break;
+    case 3: starfieldInit(); break;
+    case 4: ringFadeInit(); break;
+  }
+}
+
+// ============================================================
+// Main
+// ============================================================
 void setup() {
+  delay(10000);  // 10s delay on startup
   Serial.begin(115200);
   delay(500);
+
+  // Random seed from floating analog pin for unique patterns each boot
+  // A0 is the LED data pin on Xiao ESP32C6, so use A1 (GPIO1) which is unused/floating
+  uint32_t seed = 0;
+  for (uint8_t i = 0; i < 8; i++) {
+    seed ^= ((uint32_t)analogRead(A1) << (i * 4));
+    delayMicroseconds(50);
+  }
+  seed ^= micros();
+  randomSeed(seed);
+  random16_set_seed(seed & 0xFFFF);
 
   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS)
          .setCorrection(TypicalLEDStrip);
   FastLED.setBrightness(BRIGHTNESS);
+  FastLED.setMaxPowerInVoltsAndMilliamps(5, MAX_MILLIAMPS);
   FastLED.clear(true);
 
-  // Initialize heat map
-  memset(heat, 0, sizeof(heat));
+  // Initialize stateful patterns
+  hueOffset = random8();
+  featheredGrassInit();
+  bokehInit();
+  ringFadeInit();
+  starfieldInit();
+  rippleInit();
 
-  Serial.println("DiffusePanel Ready");
+  lastPatternSwitch = millis();
+  transitionStart = millis();
+  fadingIn = true;
+  transitioning = false;
+  Serial.println("DiffusePanel Ready - 5 patterns (90s, 3s fades)");
 }
 
 void loop() {
-  // Change which pattern function is called here:
-  patternRainbowWave();
-  // patternPlasma();
-  // patternFire();
+  uint32_t now = millis();
+  uint32_t elapsed = now - lastPatternSwitch;
+
+  // Check if it's time to start fading out
+  if (!transitioning && elapsed >= (PATTERN_DURATION_MS - TRANSITION_MS)) {
+    transitioning = true;
+    fadingIn = false;
+    transitionStart = now;
+  }
+
+  // Run current pattern
+  patterns[currentPattern]();
+
+  // Apply fade envelope
+  uint8_t fadeBrightness = 255;
+  if (fadingIn) {
+    // Fade-in at pattern start
+    uint32_t fadeElapsed = now - transitionStart;
+    if (fadeElapsed < TRANSITION_MS) {
+      float t = (float)fadeElapsed / TRANSITION_MS;
+      t = t * t * (3.0f - 2.0f * t);  // smoothstep
+      fadeBrightness = (uint8_t)(t * 255.0f);
+    } else {
+      fadingIn = false;  // Fade-in complete
+    }
+  } else if (transitioning) {
+    // Fade-out before pattern switch
+    uint32_t fadeElapsed = now - transitionStart;
+    if (fadeElapsed < TRANSITION_MS) {
+      float t = 1.0f - (float)fadeElapsed / TRANSITION_MS;
+      t = t * t * (3.0f - 2.0f * t);  // smoothstep
+      fadeBrightness = (uint8_t)(t * 255.0f);
+    } else {
+      // Transition complete - switch pattern
+      transitioning = false;
+      fadingIn = true;
+      transitionStart = now;
+      lastPatternSwitch = now;
+      currentPattern = (currentPattern + 1) % NUM_PATTERNS;
+      frame = 0;
+      FastLED.clear();
+      resetPatternState();
+      Serial.print("Pattern: ");
+      Serial.println(currentPattern);
+      fadeBrightness = 0;
+    }
+  }
+
+  // Dim all LEDs by fade envelope
+  if (fadeBrightness < 255) {
+    nscale8(leds, NUM_LEDS, fadeBrightness);
+  }
 
   FastLED.show();
   frame++;

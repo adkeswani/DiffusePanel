@@ -16,9 +16,9 @@ import math
 from patterns.base import Pattern, WIDTH, HEIGHT, NUM_LEDS, xy_to_index, hsv_to_rgb
 
 
-# Palette: warm amber, soft pink, cool blue, soft green
+# Palette: warm orange, soft pink, cool blue, soft green
 PALETTE = [
-    (28, 220),    # Warm amber/gold  (hue, saturation)
+    (19, 240),    # Warm orange  (hue, saturation)
     (235, 170),   # Soft pink/magenta
     (155, 195),   # Cool blue
     (85, 200),    # Soft green
