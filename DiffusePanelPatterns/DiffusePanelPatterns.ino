@@ -9,9 +9,8 @@
 
 // === Power Profile ===
 // Uncomment ONE of the following:
-// #define POWER_WALL   // 5V 2.5A wall adapter
-#define POWER_WALL       // USB port (500mA nominal, capped at 400mA)
-
+#define POWER_WALL
+  
 #ifdef POWER_WALL
   #define BRIGHTNESS       255    // Full range; FastLED power cap keeps draw safe
   #define MAX_MILLIAMPS    2500   // 2.5A wall supply
@@ -48,7 +47,6 @@ bool fadingIn = true;  // true = fading in at start, false = fading out before s
 
 // Forward declarations for structs (needed by Arduino auto-prototyping)
 struct BokehOrb;
-struct FeatheredStalk;
 void bokehResetOrb(BokehOrb &o);
 
 // === Coordinate Mapping (serpentine wiring) ===
@@ -79,21 +77,49 @@ static inline float smoothstep(float t) {
 // Pattern: Botanical Field (smooth noise-driven green canopy)
 // ============================================================
 
+// Spike-safe 2D noise. FastLED's inoise8() wrapper has a sign-overflow bug:
+// inoise8_raw() can return -65 (one below its -64 floor); the wrapper then does
+// n = raw + 64 = -1 (int8_t) and qadd8(n, n) reinterprets -1 as 255 -> a lone
+// blazing pixel. Clamping raw to -64 before scaling removes the spike at its
+// source with zero false positives (raw only dips below -64 during the bug).
+static inline uint8_t inoise8_fixed(uint16_t x, uint16_t y) {
+  int8_t raw = inoise8_raw(x, y);
+  if (raw < -64) raw = -64;
+  uint8_t n = (uint8_t)(raw + 64);  // 0..128
+  return qadd8(n, n);               // 0..255, matches inoise8() scaling
+}
+
 static int8_t botanicalDirX = 1;  // +1 or -1
 static int8_t botanicalDirY = 1;  // +1 or -1
+static uint16_t botanicalOriginX = 0;  // Random noise-space origin, re-rolled each cycle
+static uint16_t botanicalOriginY = 0;
+static CRGB botanicalShown[WIDTH][HEIGHT];  // smoothed per-frame display buffer
+
+// Per-frame temporal smoothing (out of 256): how far each pixel eases toward
+// its freshly computed target each frame. Lower = smoother/softer (less
+// flicker), higher = snappier. Smooths out the discrete integer-time stepping
+// and low-brightness quantization that can read as flicker.
+#define GRASS_SMOOTH 90
 
 void featheredGrassInit() {
   botanicalDirX = (random8() < 128) ? 1 : -1;
   botanicalDirY = (random8() < 128) ? 1 : -1;
+  // Random origin shifts which region of the (periodic, continuous) noise field
+  // we view, so the canopy texture AND drift differ each cycle/boot instead of
+  // always settling into the same look.
+  botanicalOriginX = random16();
+  botanicalOriginY = random16();
+  fill_solid((CRGB *)botanicalShown, WIDTH * HEIGHT, CRGB::Black);
 }
 
 void patternFeatheredGrass() {
   uint32_t ms = millis();
 
-  // Time offsets: two different speeds, direction randomized at init
-  // Negation is done by subtracting from 0 — uint16_t wrapping is fine for noise input
-  uint16_t rawX = (uint16_t)(ms / 9);
-  uint16_t rawY = (uint16_t)(ms / 12);
+  // Time offsets: two different speeds, direction randomized at init.
+  // Divisors bumped ~44% from the original (9->14, 12->19) to slow the drift.
+  // Negation is done by subtracting from 0 -- uint16_t wrapping is fine for noise input
+  uint16_t rawX = (uint16_t)(ms / 14);
+  uint16_t rawY = (uint16_t)(ms / 19);
   uint16_t timeX = (botanicalDirX > 0) ? rawX : (uint16_t)(0 - rawX);
   uint16_t timeY = (botanicalDirY > 0) ? rawY : (uint16_t)(0 - rawY);
 
@@ -103,18 +129,20 @@ void patternFeatheredGrass() {
   for (uint8_t x = 0; x < WIDTH; x++) {
     for (uint8_t y = 0; y < HEIGHT; y++) {
 
-      // Map grid to moving noise space
-      uint16_t noiseX = (y * fieldScale) + timeX;
-      uint16_t noiseY = (x * fieldScale) + timeY;
+      // Map grid to moving noise space (origin randomized per cycle)
+      uint16_t noiseX = (y * fieldScale) + timeX + botanicalOriginX;
+      uint16_t noiseY = (x * fieldScale) + timeY + botanicalOriginY;
 
-      // Master intensity map
-      uint8_t intensity = inoise8(noiseX, noiseY);
+      // Master intensity map (spike-safe: clamps FastLED's raw sign overflow)
+      uint8_t intensity = inoise8_fixed(noiseX, noiseY);
 
       // Secondary hue morph (independent offset)
-      uint8_t hueMorph = inoise8(noiseX + 5000, noiseY + 3000);
+      uint8_t hueMorph = inoise8_fixed(noiseX + 5000, noiseY + 3000);
 
-      // Nature palette: jade (112) to emerald (96)
-      uint8_t baseHue = map(hueMorph, 0, 255, 96, 112);
+      // Nature palette: warm leaf-green (90) to pure green (104). Kept below
+      // the jade/teal zone (hue ~112+) where FastLED's green->aqua ramp adds a
+      // blue component that reads as a cold blue tint.
+      uint8_t baseHue = map(hueMorph, 0, 255, 90, 104);
       uint8_t saturation = 245;
 
       // Brightness: dark lows, moderate highs
@@ -128,16 +156,13 @@ void patternFeatheredGrass() {
         cellColor = blend(cellColor, CRGB(180, 200, 20), blendAmount);
       }
 
-      leds[xyToIndex(x, y)] = cellColor;
+      // Ease the shown pixel toward the target so discrete time-stepping and
+      // low-brightness quantization don't read as flicker.
+      nblend(botanicalShown[x][y], cellColor, GRASS_SMOOTH);
+      leds[xyToIndex(x, y)] = botanicalShown[x][y];
     }
   }
 }
-
-// ============================================================
-// Wrapper init/pattern functions for slot compatibility
-// ============================================================
-void patternFallingLeaves() { patternFeatheredGrass(); }
-void leavesInit() { featheredGrassInit(); }
 
 // ============================================================
 // Pattern: Bokeh
@@ -574,9 +599,9 @@ void patternStarfield() {
 typedef void (*PatternFunc)();
 
 PatternFunc patterns[] = {
+  patternFeatheredGrass,
   patternBokeh,
   patternRipple,
-  patternFeatheredGrass,
   patternStarfield,
   patternRingFade,
 };
@@ -587,9 +612,9 @@ void resetPatternState() {
   hueOffset = random8();
   hueDirection = (random8() < 128) ? 1 : -1;
   switch (currentPattern) {
-    case 0: bokehInit(); break;
-    case 1: rippleInit(); break;
-    case 2: featheredGrassInit(); break;
+    case 0: featheredGrassInit(); break;
+    case 1: bokehInit(); break;
+    case 2: rippleInit(); break;
     case 3: starfieldInit(); break;
     case 4: ringFadeInit(); break;
   }
@@ -599,18 +624,18 @@ void resetPatternState() {
 // Main
 // ============================================================
 void setup() {
-  delay(10000);  // 10s delay on startup
+#ifdef POWER_WALL
+  delay(30000);  // 30s startup delay on wall power
+#else
+  delay(3000);   // 3s startup delay on USB power
+#endif
   Serial.begin(115200);
   delay(500);
 
-  // Random seed from floating analog pin for unique patterns each boot
-  // A0 is the LED data pin on Xiao ESP32C6, so use A1 (GPIO1) which is unused/floating
-  uint32_t seed = 0;
-  for (uint8_t i = 0; i < 8; i++) {
-    seed ^= ((uint32_t)analogRead(A1) << (i * 4));
-    delayMicroseconds(50);
-  }
-  seed ^= micros();
+  // Seed from the ESP32 hardware RNG for unique patterns each boot.
+  // esp_random() is a true hardware random source on the ESP32C6 and needs no
+  // floating-pin trick. Mix in micros() for a little extra variation.
+  uint32_t seed = esp_random() ^ micros();
   randomSeed(seed);
   random16_set_seed(seed & 0xFFFF);
 

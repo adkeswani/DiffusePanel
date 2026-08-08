@@ -6,8 +6,14 @@ from patterns.ring_fade import RingFade
 from patterns.moon import Moon
 from patterns.plasma import Plasma
 from patterns.falling_leaves import FallingLeaves
+from patterns.dreamy_aurora import DreamyAurora
+from patterns.falling_sand import FallingSand
+from patterns.creeping_moss import CreepingMoss
 
 ALL_PATTERNS = [
+    CreepingMoss,
+    FallingSand,
+    DreamyAurora,
     Plasma,
     Bokeh,
     Ripple,

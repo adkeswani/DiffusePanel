@@ -1,0 +1,141 @@
+# FastLED Issue Draft — `inoise8(x, y)` returns 255 at isolated coordinates (single-pixel spike)
+
+> Paste the body below into a new issue at https://github.com/FastLED/FastLED/issues/new
+> Fill in the bracketed `<...>` placeholders (board, version, serial output) before submitting.
+
+---
+
+## Title
+
+`inoise8(x, y)` occasionally returns 255 in near-zero regions (int8_t overflow in the scaled wrapper) — single-pixel "spark" artifact
+
+---
+
+## Summary
+
+The scaled 2D `inoise8(uint16_t x, uint16_t y)` can return **255** (full brightness) at
+isolated coordinates where the surrounding noise field is near zero. On an LED matrix this
+appears as a single bright pixel flashing in an otherwise dark area.
+
+The cause is an **8-bit signed overflow in the scaling wrapper**, not the noise math itself:
+`inoise8_raw(x, y)` can return **-65**, one below its documented `-64..+64` range, and the
+`+ 64` / `qadd8` scaling then wraps that negative value to 255.
+
+This is **distinct from #416** (which was about first-derivative "kink" discontinuities at
+cell boundaries and was fixed via the fade-curve change / `FASTLED_NOISE_FIXED`). This report
+is specifically about the **value overflow in the `int8_t -> uint8_t` scaling** of the 2D
+`inoise8` wrapper, which #416 did not address.
+
+## Environment
+
+- FastLED version: `<e.g. 3.9.x>`
+- Board / MCU: `<e.g. Seeed XIAO ESP32C6>`
+- Toolchain: `<Arduino IDE / PlatformIO + version>`
+
+## The bug
+
+In `src/noise.cpp.hpp`, the scaled 2D wrapper is:
+
+```cpp
+fl::u8 inoise8(fl::u16 x, fl::u16 y) {
+    fl::i8 n = inoise8_raw( x, y);  // documented -64..+64
+    n += 64;                        // 0..128   <-- assumes n >= -64
+    fl::u8 ans = qadd8( n, n);      // 0..255
+    return ans;
+}
+```
+
+The comment/assumption is that `inoise8_raw` returns `-64..+64`. In practice it can return
+**-65**. When it does:
+
+```
+n = -65 + 64 = -1        // int8_t
+qadd8((uint8_t)-1, ...)  // (uint8_t)-1 == 255  ->  qadd8(255, 255) == 255
+```
+
+So a sample that should map to ~0 (darkest) instead maps to **255** (brightest). Because the
+neighbouring coordinates return normal small values, the result is a lone max-brightness
+pixel — the visible "spark".
+
+`noise.h` itself hints at the mismatch: the **raw** functions are documented as "roughly -70
+to 70", while the scaled `inoise8` wrapper's `+ 64` step only accounts for `-64`.
+
+## Reproduction
+
+Minimal sketch (also attached as `FastLEDNoiseSpikeRepro.ino`). It needs no LEDs — it scans a
+block of the 2D field and prints every coordinate where `inoise8_raw < -64`:
+
+```cpp
+#include <FastLED.h>
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  Serial.print("FastLED "); Serial.println(FASTLED_VERSION);
+
+  uint32_t spikes = 0;
+  for (uint32_t x = 2800; x <= 3100; x++) {
+    for (uint32_t y = 2300; y <= 2600; y++) {
+      int8_t raw = inoise8_raw((uint16_t)x, (uint16_t)y);
+      if (raw < -64) {
+        Serial.print("SPIKE (x="); Serial.print(x);
+        Serial.print(", y=");      Serial.print(y);
+        Serial.print("): raw=");   Serial.print(raw);
+        Serial.print("  inoise8="); Serial.println(inoise8((uint16_t)x,(uint16_t)y));
+        spikes++;
+      }
+    }
+  }
+  Serial.print("Spikes found: "); Serial.println(spikes);
+}
+
+void loop() {}
+```
+
+### Known example coordinate
+
+`inoise8_raw(2944, 2442) == -65`, and `inoise8(2944, 2442) == 255`, while the orthogonal
+neighbours are ~0. (Confirmed with a bit-accurate port of the FastLED algorithm; on-device
+output below.)
+
+### Serial output on hardware
+
+```
+<paste serial monitor output here after running FastLEDNoiseSpikeRepro.ino>
+```
+
+## Impact
+
+- Any pattern using `inoise8(x, y)` for brightness in dark regions can show intermittent
+  single-pixel flashes.
+- It is rare (~0.0003% of coordinates), so it is easy to miss in testing and hard to diagnose
+  in the field — it looks like a loose wire or a bad LED.
+
+## Suggested fix
+
+Clamp the raw value to its intended floor before scaling (one line, no behavioural change for
+valid samples):
+
+```cpp
+fl::u8 inoise8(fl::u16 x, fl::u16 y) {
+    fl::i8 n = inoise8_raw( x, y);
+    if (n < -64) n = -64;   // guard: raw can undershoot to -65
+    n += 64;                // 0..128
+    fl::u8 ans = qadd8( n, n);
+    return ans;
+}
+```
+
+The same guard applies to the 1D and 3D scaled wrappers (`inoise8(x)`, `inoise8(x, y, z)`),
+which share the identical `n += 64; qadd8(n, n)` pattern.
+
+Alternatively, fix `inoise8_raw` so it never returns below -64 — but the clamp in the wrapper
+is minimal and preserves the raw function's documented "roughly -70..70" contract for callers
+that use it directly.
+
+## Notes
+
+- Distinct from #416 (derivative-smoothness / fade curve). This is the scaled-wrapper value
+  overflow.
+- I have a bit-accurate Python port of the algorithm and an exhaustive scan if useful; happy
+  to share.
