@@ -191,11 +191,11 @@ class PacManGhost(Pattern):
     # Per-column (x = 1..14) top row of the dome, rounding the corners.
     _DOME_TOP = {1: 4, 2: 3, 3: 2, 4: 1, 5: 0, 6: 0, 7: 0, 8: 0,
                  9: 0, 10: 0, 11: 1, 12: 2, 13: 3, 14: 4}
-    # Per-column bottom row: three rounded feet separated by single-column
-    # notches, matching the ghost's trademark wavy hem.
-    _FOOT_BOTTOM = {1: 13, 2: 15, 3: 15, 4: 13, 5: 11,
-                    6: 13, 7: 15, 8: 15, 9: 13, 10: 11,
-                    11: 13, 12: 15, 13: 15, 14: 13}
+    # Base foot profile (x = 1..14): three rounded feet separated by
+    # single-column notches, matching the ghost's trademark wavy hem.
+    # This base shape is shifted each frame to animate the feet.
+    _FOOT_BASE = [13, 15, 15, 13, 11, 13, 15, 15, 13, 11, 13, 15, 15, 13]
+    _FOOT_TOGGLE_FRAMES = 8  # classic two-frame arcade "swish" cadence
 
     def __init__(self):
         super().__init__()
@@ -207,9 +207,15 @@ class PacManGhost(Pattern):
         pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
         body = _scale((255, 255, 255), pulse)
 
-        for x in range(1, 15):
+        # The hem alternates between two shifted copies of the foot profile,
+        # swishing the legs back and forth like the arcade sprite's walk cycle.
+        swishing = (frame // self._FOOT_TOGGLE_FRAMES) % 2 == 1
+        shift = 2 if swishing else 0
+        foot_count = len(self._FOOT_BASE)
+
+        for i, x in enumerate(range(1, 15)):
             top = self._DOME_TOP[x] + bob
-            bottom = self._FOOT_BOTTOM[x] + bob
+            bottom = self._FOOT_BASE[(i + shift) % foot_count] + bob
             for y in range(top, bottom + 1):
                 _set(leds, x, y, body)
 
