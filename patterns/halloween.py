@@ -192,15 +192,14 @@ class PacManGhost(Pattern):
     # Per-column (x = 1..14) top row of the dome, rounding the corners.
     _DOME_TOP = {1: 4, 2: 3, 3: 2, 4: 1, 5: 0, 6: 0, 7: 0, 8: 0,
                  9: 0, 10: 0, 11: 1, 12: 2, 13: 3, 14: 4}
-    # Base foot profile (x = 1..14): three rounded feet separated by
-    # single-column notches, matching the ghost's trademark wavy hem.
+    # Base foot profile (x = 1..14): three pointed, triangular feet
+    # separated by single-column notches, matching the ghost's wavy hem.
     # This base shape is shifted each frame to animate the feet.
-    _FOOT_BASE = [13, 15, 15, 13, 11, 13, 15, 15, 13, 11, 13, 15, 15, 13]
+    _FOOT_BASE = [12, 14, 14, 12, 11, 12, 14, 14, 12, 11, 12, 14, 14, 12]
     _FOOT_TOGGLE_FRAMES = 8  # classic two-frame arcade "swish" cadence
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
-        bob = int(round(math.sin(frame * 0.04)))
         pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
         body = _scale((255, 255, 255), pulse)
 
@@ -211,8 +210,8 @@ class PacManGhost(Pattern):
         foot_count = len(self._FOOT_BASE)
 
         for i, x in enumerate(range(1, 15)):
-            top = self._DOME_TOP[x] + bob
-            bottom = self._FOOT_BASE[(i + shift) % foot_count] + bob
+            top = self._DOME_TOP[x]
+            bottom = self._FOOT_BASE[(i + shift) % foot_count]
             for y in range(top, bottom + 1):
                 _set(leds, x, y, body)
 
@@ -220,7 +219,7 @@ class PacManGhost(Pattern):
         for ex in (4, 10):
             for dy in range(3):
                 for dx in range(2):
-                    _set(leds, ex + dx, 5 + dy + bob, BLACK)
+                    _set(leds, ex + dx, 5 + dy, BLACK)
 
 
 class _FlowingDrips(Pattern):
