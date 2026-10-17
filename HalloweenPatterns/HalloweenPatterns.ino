@@ -788,9 +788,10 @@ static int8_t evilEyesPupilDx = 0;
 static uint32_t evilEyesNextLookFrame = 0;
 
 void evilEyesInit() {
+  // No blue, so these read as green rather than cyan on real LEDs.
   static const CRGB greens[] = {
-    CRGB(0, 220, 40), CRGB(20, 235, 30),
-    CRGB(0, 200, 70), CRGB(40, 230, 20)
+    CRGB(40, 200, 0), CRGB(60, 220, 0),
+    CRGB(30, 180, 0), CRGB(70, 210, 0)
   };
   evilEyeColor = greens[random8(0, 4)];
   evilEyesPupilDx = 0;
@@ -806,23 +807,17 @@ void patternEvilEyes() {
   CRGB eye = evilEyeColor;
   CRGB pupil = CRGB::Black;
 
-  // Core eye shape (full brightness) plus a feathered halo (fractional
-  // brightness) around its edges, so the slanted silhouette reads as a
-  // softened, anti-aliased eye instead of a hard-edged parallelogram.
+  // Core eye shape (full brightness) plus two small feathered tips that
+  // round off the sharpest corners, continuing the slant without adding a
+  // scattered halo.
   static const uint8_t leftEyeCore[][2] = {
     {0,4}, {1,4}, {2,4}, {3,5}, {4,5}, {5,6}, {6,6},
     {1,5}, {2,5}, {3,6}, {4,6}, {5,7}, {6,7},
     {2,6}, {3,7}, {4,7}
   };
   static const uint8_t leftEyeFeather[][3] = {
-    {1,3,89}, {0,3,51},
-    {0,5,89},
-    {5,5,77},
-    {1,6,77},
-    {6,5,64},
-    {2,7,77},
-    {7,7,89}, {7,6,51},
-    {5,8,77}, {6,8,77}
+    {0,3,115},
+    {7,7,115}
   };
 
   if (frame % blinkPeriod < blinkFrames) {

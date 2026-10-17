@@ -385,31 +385,26 @@ class EvilEyes(Pattern):
     _BLINK_PERIOD = 150
     _BLINK_FRAMES = 6
 
-    # Core eye shape (full brightness) plus a feathered halo (fractional
-    # brightness) around its edges, so the slanted silhouette reads as a
-    # softened, anti-aliased eye instead of a hard-edged parallelogram.
+    # Core eye shape (full brightness) plus two small feathered tips that
+    # round off the sharpest corners, continuing the slant without adding a
+    # scattered halo.
     _LEFT_EYE_CORE = ((0, 4), (1, 4), (2, 4), (3, 5), (4, 5), (5, 6), (6, 6),
                        (1, 5), (2, 5), (3, 6), (4, 6), (5, 7), (6, 7),
                        (2, 6), (3, 7), (4, 7))
     _LEFT_EYE_FEATHER = {
-        (1, 3): 0.35, (0, 3): 0.2,
-        (0, 5): 0.35,
-        (5, 5): 0.3,
-        (1, 6): 0.3,
-        (6, 5): 0.25,
-        (2, 7): 0.3,
-        (7, 7): 0.35, (7, 6): 0.2,
-        (5, 8): 0.3, (6, 8): 0.3,
+        (0, 3): 0.45,
+        (7, 7): 0.45,
     }
 
     def __init__(self):
         super().__init__()
-        # Pick one venomous green eye color per activation.
+        # Pick one venomous green eye color per activation (no blue, so it
+        # reads as green rather than cyan on real LEDs).
         self.eye_color = random.choice((
-            (0, 220, 40),
-            (20, 235, 30),
-            (0, 200, 70),
-            (40, 230, 20),
+            (40, 200, 0),
+            (60, 220, 0),
+            (30, 180, 0),
+            (70, 210, 0),
         ))
         self._pupil_dx = 0
         self._next_look_frame = random.randint(self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX)
