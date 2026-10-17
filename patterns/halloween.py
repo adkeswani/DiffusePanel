@@ -389,11 +389,6 @@ class EvilEyes(Pattern):
     _LEFT_EYE_CORE = ((0, 4), (1, 4), (2, 4), (3, 5), (4, 5), (5, 6), (6, 6),
                        (1, 5), (2, 5), (3, 6), (4, 6), (5, 7), (6, 7),
                        (2, 6), (3, 7), (4, 7))
-    # One soft quarter-brightness pixel continuing the inner (nose-side)
-    # column one step further, tapering the sharp inner tip.
-    _LEFT_EYE_FEATHER = {
-        (6, 8): 0.25,
-    }
 
     def __init__(self):
         super().__init__()
@@ -422,10 +417,6 @@ class EvilEyes(Pattern):
         for x, y in self._LEFT_EYE_CORE:
             _set(leds, x, y, eye_color)
             _set(leds, 15 - x, y, eye_color)
-        for (x, y), amount in self._LEFT_EYE_FEATHER.items():
-            feathered = _scale(eye_color, amount)
-            _set(leds, x, y, feathered)
-            _set(leds, 15 - x, y, feathered)
         # A single-pixel pupil drifts left/right across the widest row,
         # holding each look direction for a random stretch before randomly
         # picking the next one. From an extreme it can only move back toward
