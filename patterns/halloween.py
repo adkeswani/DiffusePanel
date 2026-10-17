@@ -199,13 +199,14 @@ class PacManGhost(Pattern):
     _FOOT_CENTER = 12.5
     _FOOT_AMPLITUDE = 1.3
     _FOOT_PERIODS = 3
-    _BOB_TOGGLE_FRAMES = 90  # constant bob cadence; eyes move in lockstep
+    _BOB_TOGGLE_FRAMES = 90  # constant bob cadence; eyes move at 2x this rate
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
         pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
         body = _scale(IVORY_WHITE, pulse)
         bob = (frame // self._BOB_TOGGLE_FRAMES) % 2
+        eye_dx = (frame // (self._BOB_TOGGLE_FRAMES // 2)) % 2
 
         # Gently sway the wave's phase so the feet sway side to side, rather
         # than the previous hard two-frame swish. This stays independent of
@@ -237,12 +238,12 @@ class PacManGhost(Pattern):
                 _set(leds, x, full_bottom + 1, _scale(body, frac_bottom))
 
         # Eyes are dark cutouts with a small cyan dot that drifts left/right
-        # in lockstep with the bob.
+        # at twice the bob's speed (vertical position still follows the bob).
         for ex in (4, 10):
             for dy in range(3):
                 for dx in range(2):
                     _set(leds, ex + dx, 5 + dy + bob, BLACK)
-            _set(leds, ex + bob, 6 + bob, (60, 220, 255))
+            _set(leds, ex + eye_dx, 6 + bob, (60, 220, 255))
 
 
 class _FlowingDrips(Pattern):
