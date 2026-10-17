@@ -199,14 +199,12 @@ class PacManGhost(Pattern):
     _FOOT_CENTER = 12.5
     _FOOT_AMPLITUDE = 1.3
     _FOOT_PERIODS = 3
-    _EDGE_GLOW = 0.18  # faint halo feathering the straight side edges
     _BOB_TOGGLE_FRAMES = 90  # constant bob cadence; eyes move in lockstep
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
         pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
         body = _scale(IVORY_WHITE, pulse)
-        glow = _scale(body, self._EDGE_GLOW)
         bob = (frame // self._BOB_TOGGLE_FRAMES) % 2
 
         # Gently sway the wave's phase so the feet sway side to side, rather
@@ -237,15 +235,6 @@ class PacManGhost(Pattern):
             # for a smooth, anti-aliased point instead of a hard pixel cutoff.
             if frac_bottom > 0.02:
                 _set(leds, x, full_bottom + 1, _scale(body, frac_bottom))
-
-            # Faint halo just outside the straight sides, feathering the
-            # otherwise hard vertical outline.
-            if x == 1:
-                for y in range(full_top, full_bottom + 1):
-                    _set(leds, 0, y, glow)
-            if x == 14:
-                for y in range(full_top, full_bottom + 1):
-                    _set(leds, 15, y, glow)
 
         # Eyes are dark cutouts with a small cyan dot that drifts left/right
         # in lockstep with the bob.
