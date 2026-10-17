@@ -442,12 +442,14 @@ class EvilEyes(Pattern):
             _set(leds, x + dx, y, eye_color)
             _set(leds, 15 - x + dx, y, eye_color)
 
-        # The pupil rides along with the eye shift, same direction and
-        # magnitude, so it stays centered inside the socket instead of
-        # drifting toward either edge.
+        # The pupil moves the same direction as the eye but travels a bit
+        # further, so it's not just glued dead-center in the socket. At
+        # double the eye's shift it lands one step off-center -- still
+        # safely inside the socket, not at its edge.
         px, py = self._PUPIL_POS
-        _set(leds, px + dx, py, pupil_color)
-        _set(leds, 15 - px + dx, py, pupil_color)
+        pupil_dx = 2 * dx
+        _set(leds, px + pupil_dx, py, pupil_color)
+        _set(leds, 15 - px + pupil_dx, py, pupil_color)
 
 
 class LaughingSkullCloseup(Pattern):
