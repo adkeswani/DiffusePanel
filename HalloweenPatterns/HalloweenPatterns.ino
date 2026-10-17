@@ -9,7 +9,7 @@
 
 // === Power Profile ===
 // Uncomment ONE of the following:
-#define POWER_WALL
+// #define POWER_WALL
 
 #ifdef POWER_WALL
   #define BRIGHTNESS       255    // Full range; FastLED power cap keeps draw safe
@@ -33,8 +33,8 @@
 #define NUM_LEDS    (WIDTH * HEIGHT)
 
 // === Pattern Cycling ===
-#define PATTERN_DURATION_MS  90000  // 90 seconds per pattern
-#define TRANSITION_MS        3000   // 3 second fade transitions
+#define PATTERN_DURATION_MS  10000  // 10 seconds per pattern (temporary USB test setting)
+#define TRANSITION_MS        1000   // 1 second fade transitions
 #define NUM_PATTERNS         6
 
 CRGB leds[NUM_LEDS];
@@ -1009,7 +1009,7 @@ void setup() {
   transitionStart = millis();
   fadingIn = true;
   transitioning = false;
-  Serial.println("DiffusePanel Halloween Ready - 6 patterns (90s, 3s fades)");
+  Serial.println("DiffusePanel Halloween Ready - 6 patterns (10s, 1s fades)");
 }
 
 void loop() {
