@@ -385,14 +385,31 @@ class EvilEyes(Pattern):
     _BLINK_PERIOD = 150
     _BLINK_FRAMES = 6
 
+    # Core eye shape (full brightness) plus a feathered halo (fractional
+    # brightness) around its edges, so the slanted silhouette reads as a
+    # softened, anti-aliased eye instead of a hard-edged parallelogram.
+    _LEFT_EYE_CORE = ((0, 4), (1, 4), (2, 4), (3, 5), (4, 5), (5, 6), (6, 6),
+                       (1, 5), (2, 5), (3, 6), (4, 6), (5, 7), (6, 7),
+                       (2, 6), (3, 7), (4, 7))
+    _LEFT_EYE_FEATHER = {
+        (1, 3): 0.35, (0, 3): 0.2,
+        (0, 5): 0.35,
+        (5, 5): 0.3,
+        (1, 6): 0.3,
+        (6, 5): 0.25,
+        (2, 7): 0.3,
+        (7, 7): 0.35, (7, 6): 0.2,
+        (5, 8): 0.3, (6, 8): 0.3,
+    }
+
     def __init__(self):
         super().__init__()
-        # Pick one warm, readable eye color per activation.
+        # Pick one venomous green eye color per activation.
         self.eye_color = random.choice((
-            (255, 150, 0),
-            (255, 185, 0),
-            (255, 215, 20),
-            (235, 175, 25),
+            (0, 220, 40),
+            (20, 235, 30),
+            (0, 200, 70),
+            (40, 230, 20),
         ))
         self._pupil_dx = 0
         self._next_look_frame = random.randint(self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX)
@@ -400,13 +417,7 @@ class EvilEyes(Pattern):
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
         eye_color = self.eye_color
-        pupil_color = (80, 35, 0)
-
-        # Inner corners point downward, producing an unmistakably angry slant.
-        left_eye = ((0, 4), (1, 4), (2, 4), (3, 5), (4, 5), (5, 6), (6, 6),
-                    (1, 5), (2, 5), (3, 6), (4, 6), (5, 7), (6, 7),
-                    (2, 6), (3, 7), (4, 7))
-        right_eye = tuple((15 - x, y) for x, y in left_eye)
+        pupil_color = BLACK
 
         if frame % self._BLINK_PERIOD < self._BLINK_FRAMES:
             # Closed eyelid: just a thin slit at the widest row, no pupil.
@@ -415,8 +426,13 @@ class EvilEyes(Pattern):
                 _set(leds, 15 - x, y, eye_color)
             return
 
-        for x, y in left_eye + right_eye:
+        for x, y in self._LEFT_EYE_CORE:
             _set(leds, x, y, eye_color)
+            _set(leds, 15 - x, y, eye_color)
+        for (x, y), amount in self._LEFT_EYE_FEATHER.items():
+            feathered = _scale(eye_color, amount)
+            _set(leds, x, y, feathered)
+            _set(leds, 15 - x, y, feathered)
 
         # A single-pixel pupil drifts left/right across the widest row,
         # holding each look direction for a random stretch before randomly

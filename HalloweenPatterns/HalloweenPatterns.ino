@@ -33,7 +33,7 @@
 #define NUM_LEDS    (WIDTH * HEIGHT)
 
 // === Pattern Cycling ===
-#define PATTERN_DURATION_MS  10000  // 10 seconds per pattern (temporary USB test setting)
+#define PATTERN_DURATION_MS  20000  // 20 seconds per pattern (temporary USB test setting)
 #define TRANSITION_MS        1000   // 1 second fade transitions
 #define NUM_PATTERNS         6
 
@@ -688,7 +688,7 @@ void renderHalloweenFlow(const CRGB &background, const CRGB &stream,
       if (y < tail || y > flowFront[x]) continue;
       float depth = max(0.0f, flowFront[x] - y);
       float shimmer = 0.80f + 0.20f * sinf(frame * 0.08f + x * 1.7f + y * 0.3f);
-      float brightness = (0.42f + 0.58f * expf(-depth / 8.0f)) * shimmer;
+      float brightness = (0.08f + 0.92f * expf(-depth / 4.5f)) * shimmer;
       CRGB color = stream;
       color.nscale8_video((uint8_t)(brightness * 255.0f));
       leds[xyToIndex(x, y)] = color;
@@ -703,8 +703,8 @@ void renderHalloweenFlow(const CRGB &background, const CRGB &stream,
 }
 
 void patternFlowingSlime() {
-  renderHalloweenFlow(CRGB(2, 0, 0), CRGB(235, 10, 8),
-                      CRGB(255, 50, 20), CRGB(175, 5, 5));
+  renderHalloweenFlow(CRGB(3, 0, 0), CRGB(195, 2, 1),
+                      CRGB(255, 25, 8), CRGB(130, 1, 1));
 }
 
 // ============================================================
@@ -788,11 +788,11 @@ static int8_t evilEyesPupilDx = 0;
 static uint32_t evilEyesNextLookFrame = 0;
 
 void evilEyesInit() {
-  static const CRGB golds[] = {
-    CRGB(255, 150, 0), CRGB(255, 185, 0),
-    CRGB(255, 215, 20), CRGB(235, 175, 25)
+  static const CRGB greens[] = {
+    CRGB(0, 220, 40), CRGB(20, 235, 30),
+    CRGB(0, 200, 70), CRGB(40, 230, 20)
   };
-  evilEyeColor = golds[random8(0, 4)];
+  evilEyeColor = greens[random8(0, 4)];
   evilEyesPupilDx = 0;
   evilEyesNextLookFrame = random(70, 111);
 }
@@ -804,12 +804,25 @@ void patternEvilEyes() {
   const uint16_t blinkFrames = 6;
 
   CRGB eye = evilEyeColor;
-  CRGB pupil(80, 35, 0);
+  CRGB pupil = CRGB::Black;
 
-  static const uint8_t leftEye[][2] = {
+  // Core eye shape (full brightness) plus a feathered halo (fractional
+  // brightness) around its edges, so the slanted silhouette reads as a
+  // softened, anti-aliased eye instead of a hard-edged parallelogram.
+  static const uint8_t leftEyeCore[][2] = {
     {0,4}, {1,4}, {2,4}, {3,5}, {4,5}, {5,6}, {6,6},
     {1,5}, {2,5}, {3,6}, {4,6}, {5,7}, {6,7},
     {2,6}, {3,7}, {4,7}
+  };
+  static const uint8_t leftEyeFeather[][3] = {
+    {1,3,89}, {0,3,51},
+    {0,5,89},
+    {5,5,77},
+    {1,6,77},
+    {6,5,64},
+    {2,7,77},
+    {7,7,89}, {7,6,51},
+    {5,8,77}, {6,8,77}
   };
 
   if (frame % blinkPeriod < blinkFrames) {
@@ -823,11 +836,19 @@ void patternEvilEyes() {
     return;
   }
 
-  for (uint8_t i = 0; i < sizeof(leftEye) / sizeof(leftEye[0]); i++) {
-    uint8_t x = leftEye[i][0];
-    uint8_t y = leftEye[i][1];
+  for (uint8_t i = 0; i < sizeof(leftEyeCore) / sizeof(leftEyeCore[0]); i++) {
+    uint8_t x = leftEyeCore[i][0];
+    uint8_t y = leftEyeCore[i][1];
     leds[xyToIndex(x, y)] = eye;
     leds[xyToIndex(15 - x, y)] = eye;
+  }
+  for (uint8_t i = 0; i < sizeof(leftEyeFeather) / sizeof(leftEyeFeather[0]); i++) {
+    uint8_t x = leftEyeFeather[i][0];
+    uint8_t y = leftEyeFeather[i][1];
+    CRGB feathered = eye;
+    feathered.nscale8_video(leftEyeFeather[i][2]);
+    leds[xyToIndex(x, y)] = feathered;
+    leds[xyToIndex(15 - x, y)] = feathered;
   }
 
   // A single-pixel pupil drifts left/right across the widest row, holding
@@ -969,7 +990,7 @@ void patternBloodMoonEclipse() {
 
       // A one-LED feather lets each pixel dim gradually under the moving disc.
       float occlusion = smoothstep((moonRadius + 1.05f - moonDistance) / 2.10f);
-      leds[xyToIndex(x, y)] = eclipseMix(color, CRGB(1, 0, 2), occlusion);
+      leds[xyToIndex(x, y)] = eclipseMix(color, CRGB(0, 0, 0), occlusion);
     }
   }
 }
