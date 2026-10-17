@@ -9,7 +9,7 @@
 
 // === Power Profile ===
 // Uncomment ONE of the following:
-#define POWER_WALL
+// #define POWER_WALL
 
 #ifdef POWER_WALL
   #define BRIGHTNESS       255    // Full range; FastLED power cap keeps draw safe
@@ -33,9 +33,9 @@
 #define NUM_LEDS    (WIDTH * HEIGHT)
 
 // === Pattern Cycling ===
-#define PATTERN_DURATION_MS  90000  // 90 seconds per pattern
-#define TRANSITION_MS        3000   // 3 second fade transitions
-#define NUM_PATTERNS         5
+#define PATTERN_DURATION_MS  20000  // 20 seconds per pattern (temporary USB test setting)
+#define TRANSITION_MS        1000   // 1 second fade transitions
+#define NUM_PATTERNS         6
 
 CRGB leds[NUM_LEDS];
 uint32_t frame = 0;
@@ -50,11 +50,16 @@ struct BokehOrb;
 void bokehResetOrb(BokehOrb &o);
 
 // === Coordinate Mapping (serpentine wiring) ===
+// The physical panel is mounted/wired 90 degrees rotated relative to the
+// logical x/y axes used by every pattern (and by the Python simulator), so
+// swap axes once here instead of touching each pattern's math. Without this,
+// motion intended to be horizontal (e.g. the Blood Moon Eclipse's moon)
+// instead appears vertical on real hardware.
 uint16_t xyToIndex(uint8_t x, uint8_t y) {
-  if (y % 2 == 0) {
-    return y * WIDTH + x;
+  if (x % 2 == 0) {
+    return x * HEIGHT + y;
   } else {
-    return y * WIDTH + (WIDTH - 1 - x);
+    return x * HEIGHT + (HEIGHT - 1 - y);
   }
 }
 
@@ -600,16 +605,21 @@ static float halloweenRingStartAngle = 0.0f;
 static float halloweenRingDirection = 1.0f;
 static CRGB halloweenRingBaseColor;
 static CRGB halloweenRingWaveColor;
+static float halloweenRingWaveExponent = 4.0f;
 
 void halloweenRingInit() {
   halloweenRingStartAngle = random16(0, 628) / 100.0f;
   halloweenRingDirection = (random8() < 128) ? 1.0f : -1.0f;
   if (random8() < 128) {
-    halloweenRingBaseColor = CRGB(255, 72, 0);
-    halloweenRingWaveColor = CRGB(150, 0, 255);
+    halloweenRingBaseColor = CRGB(255, 58, 0);
+    halloweenRingWaveColor = CRGB(170, 0, 210);
+    halloweenRingWaveExponent = 4.0f;
   } else {
-    halloweenRingBaseColor = CRGB(150, 0, 255);
-    halloweenRingWaveColor = CRGB(255, 72, 0);
+    halloweenRingBaseColor = CRGB(170, 0, 210);
+    halloweenRingWaveColor = CRGB(255, 58, 0);
+    // Orange's brighter luminance makes its wave read as narrower than
+    // purple's at the same falloff, so widen it with a gentler exponent.
+    halloweenRingWaveExponent = 2.0f;
   }
 }
 
@@ -637,7 +647,7 @@ void patternHalloweenRing() {
       float angleDistance = fabsf(fmodf(pixelAngle - peakAngle + 3.0f * PI,
                                         2.0f * PI) - PI);
       float wave = 0.5f * (1.0f + cosf(angleDistance));
-      wave = wave * wave * wave * wave;
+      wave = powf(wave, halloweenRingWaveExponent);
       CRGB color = blend(halloweenRingBaseColor, halloweenRingWaveColor,
                          (uint8_t)(wave * 255.0f));
       uint8_t scale = (uint8_t)(255.0f * edge * (0.72f + 0.28f * wave));
@@ -683,7 +693,7 @@ void renderHalloweenFlow(const CRGB &background, const CRGB &stream,
       if (y < tail || y > flowFront[x]) continue;
       float depth = max(0.0f, flowFront[x] - y);
       float shimmer = 0.80f + 0.20f * sinf(frame * 0.08f + x * 1.7f + y * 0.3f);
-      float brightness = (0.42f + 0.58f * expf(-depth / 8.0f)) * shimmer;
+      float brightness = (0.08f + 0.92f * expf(-depth / 4.5f)) * shimmer;
       CRGB color = stream;
       color.nscale8_video((uint8_t)(brightness * 255.0f));
       leds[xyToIndex(x, y)] = color;
@@ -698,55 +708,167 @@ void renderHalloweenFlow(const CRGB &background, const CRGB &stream,
 }
 
 void patternFlowingSlime() {
-  renderHalloweenFlow(CRGB(0, 2, 0), CRGB(55, 235, 8),
-                      CRGB(105, 255, 20), CRGB(45, 175, 5));
+  renderHalloweenFlow(CRGB(3, 0, 0), CRGB(195, 2, 1),
+                      CRGB(255, 0, 0), CRGB(130, 1, 1));
+}
+
+// ============================================================
+// Halloween Pattern: Pac-Man Ghost (White)
+// Classic arcade ghost silhouette recolored ivory. Rounded dome, a
+// feathered 3-lobe sine-wave hem, constant-speed bob, and eyes that
+// drift left/right at twice the bob's speed.
+// ============================================================
+static inline CRGB ghostScale(const CRGB &color, float amount) {
+  CRGB c = color;
+  c.nscale8_video((uint8_t)constrain(amount * 255.0f, 0.0f, 255.0f));
+  return c;
+}
+
+void patternPacManGhost() {
+  fill_solid(leds, NUM_LEDS, CRGB::Black);
+
+  const float domeRadius = 4.0f;
+  const float footCenter = 12.5f;
+  const float footAmplitude = 1.3f;
+  const uint8_t footPeriods = 3;
+  const uint16_t bobToggleFrames = 90;  // constant bob cadence; eyes move at 2x this rate
+
+  float pulse = 0.85f + 0.15f * ((sinf(frame * 0.06f) + 1.0f) / 2.0f);
+  CRGB body = ghostScale(CRGB(255, 244, 205), pulse);
+  uint8_t bob = (frame / bobToggleFrames) % 2;
+  uint8_t eyeDx = (frame / (bobToggleFrames / 2)) % 2;
+
+  // Gently sway the wave's phase so the feet sway side to side.
+  float phaseShift = sinf(frame * 0.05f) * 1.2f;
+  float angularFreq = 2.0f * PI * footPeriods / 14.0f;
+
+  for (uint8_t i = 0; i < 14; i++) {
+    uint8_t x = i + 1;
+
+    // Smooth circular corner: how far this column is inset from the top,
+    // rounded to a hard-edged row (no feathering on the dome).
+    float edgeDist = min((float)(x - 1), (float)(14 - x));
+    edgeDist = constrain(edgeDist, 0.0f, domeRadius);
+    float topF = domeRadius - sqrtf(max(0.0f, domeRadius * domeRadius -
+                                             (domeRadius - edgeDist) * (domeRadius - edgeDist)));
+    int16_t fullTop = (int16_t)roundf(topF) + bob;
+
+    float wave = sinf((i + phaseShift) * angularFreq + PI / 2.0f);
+    float bottomF = footCenter + wave * footAmplitude;
+
+    int16_t fullBottom = (int16_t)floorf(bottomF) + bob;
+    float fracBottom = bottomF - floorf(bottomF);
+
+    for (int16_t y = fullTop; y <= fullBottom; y++) {
+      if (y >= 0 && y < HEIGHT) leds[xyToIndex(x, y)] = body;
+    }
+
+    // Feather only the hem's final row by its fractional coverage.
+    if (fracBottom > 0.02f && fullBottom + 1 >= 0 && fullBottom + 1 < HEIGHT) {
+      leds[xyToIndex(x, fullBottom + 1)] = ghostScale(body, fracBottom);
+    }
+  }
+
+  // Eyes are dark cutouts with a small cyan dot that drifts left/right at
+  // twice the bob's speed (vertical position still follows the bob).
+  static const uint8_t eyeXs[] = {4, 10};
+  for (uint8_t e = 0; e < 2; e++) {
+    uint8_t ex = eyeXs[e];
+    for (uint8_t dy = 0; dy < 3; dy++) {
+      for (uint8_t dx = 0; dx < 2; dx++) {
+        uint8_t y = 5 + dy + bob;
+        if (y < HEIGHT) leds[xyToIndex(ex + dx, y)] = CRGB::Black;
+      }
+    }
+    uint8_t py = 6 + bob;
+    if (py < HEIGHT) leds[xyToIndex(ex + eyeDx, py)] = CRGB(60, 220, 255);
+  }
 }
 
 // ============================================================
 // Halloween Pattern: Evil Eyes
 // ============================================================
 static CRGB evilEyeColor;
+static int8_t evilEyesEyeDx = 0;
+static uint32_t evilEyesNextLookFrame = 0;
 
 void evilEyesInit() {
-  static const CRGB golds[] = {
-    CRGB(255, 150, 0), CRGB(255, 185, 0),
-    CRGB(255, 215, 20), CRGB(235, 175, 25)
+  // Pure green only (no red, no blue) per user request.
+  static const CRGB greens[] = {
+    CRGB(0, 180, 0), CRGB(0, 200, 0),
+    CRGB(0, 220, 0), CRGB(0, 255, 0)
   };
-  evilEyeColor = golds[random8(0, 4)];
+  evilEyeColor = greens[random8(0, 4)];
+  evilEyesEyeDx = 0;
+  evilEyesNextLookFrame = random(70, 111);
 }
 
 void patternEvilEyes() {
   fill_solid(leds, NUM_LEDS, CRGB::Black);
-  uint16_t cycle = frame % 300;
-  float fade;
-  if (cycle < 70) fade = (float)cycle / 70.0f;
-  else if (cycle < 190) fade = 1.0f;
-  else if (cycle < 270) fade = 1.0f - (float)(cycle - 190) / 80.0f;
-  else fade = 0.0f;
-  fade = smoothstep(fade);
+
+  const uint16_t blinkPeriod = 150;
+  const uint16_t blinkFrames = 6;
 
   CRGB eye = evilEyeColor;
-  eye.nscale8_video((uint8_t)(fade * 255.0f));
-  CRGB pupil(80, 35, 0);
-  pupil.nscale8_video((uint8_t)(fade * 255.0f));
+  CRGB pupil = CRGB(0, 10, 0);
 
-  static const uint8_t leftEye[][2] = {
+  // Inner corners point downward, producing an unmistakably angry slant.
+  static const uint8_t leftEyeCore[][2] = {
     {0,4}, {1,4}, {2,4}, {3,5}, {4,5}, {5,6}, {6,6},
     {1,5}, {2,5}, {3,6}, {4,6}, {5,7}, {6,7},
     {2,6}, {3,7}, {4,7}
   };
-  for (uint8_t i = 0; i < sizeof(leftEye) / sizeof(leftEye[0]); i++) {
-    uint8_t x = leftEye[i][0];
-    uint8_t y = leftEye[i][1];
-    leds[xyToIndex(x, y)] = eye;
-    leds[xyToIndex(15 - x, y)] = eye;
+  // Base position (in the eye's own local coordinates) of the darker pupil
+  // pixel, before the eye-shift and opposing pupil offset are added.
+  const uint8_t pupilLocalX = 4;
+  const uint8_t pupilLocalY = 6;
+
+  if (frame % blinkPeriod < blinkFrames) {
+    // Closed eyelid: just a thin slit at the widest row, no pupil.
+    static const uint8_t slit[] = {2, 3, 4, 5, 6};
+    for (uint8_t i = 0; i < 5; i++) {
+      uint8_t x = slit[i];
+      leds[xyToIndex(x, 6)] = eye;
+      leds[xyToIndex(15 - x, 6)] = eye;
+    }
+    return;
   }
 
-  // TODO (optional): use eye here too for a single-color eye shape.
-  static const uint8_t pupils[][2] = {{4,6}, {11,6}, {5,6}, {10,6}};
-  for (uint8_t i = 0; i < 4; i++) {
-    leds[xyToIndex(pupils[i][0], pupils[i][1])] = pupil;
+  // Holding each look direction for a random stretch before randomly
+  // picking the next one. From an extreme it can only move back toward
+  // center or hold, so it always passes through center rather than
+  // jumping straight from one side to the other.
+  if (frame >= evilEyesNextLookFrame) {
+    if (evilEyesEyeDx == 0) {
+      evilEyesEyeDx = (int8_t)random(-1, 2);  // -1, 0, or 1
+    } else {
+      evilEyesEyeDx = (random8() < 128) ? 0 : evilEyesEyeDx;
+    }
+    evilEyesNextLookFrame = frame + random(70, 111);
   }
+
+  // Both eyes shift the same screen direction together (not mirrored), so
+  // the eyes look the same way instead of converging/diverging.
+  int8_t dx = evilEyesEyeDx;
+  for (uint8_t i = 0; i < sizeof(leftEyeCore) / sizeof(leftEyeCore[0]); i++) {
+    uint8_t x = leftEyeCore[i][0];
+    uint8_t y = leftEyeCore[i][1];
+
+    int16_t leftX = (int16_t)x + dx;
+    int16_t rightX = (int16_t)(15 - x) + dx;
+    if (leftX >= 0 && leftX < WIDTH) leds[xyToIndex((uint8_t)leftX, y)] = eye;
+    if (rightX >= 0 && rightX < WIDTH) leds[xyToIndex((uint8_t)rightX, y)] = eye;
+  }
+
+  // The pupil moves the same direction as the eye but travels a bit
+  // further, so it's not just glued dead-center in the socket. At double
+  // the eye's shift it lands one step off-center -- still safely inside
+  // the socket, not at its edge.
+  int16_t pupilDx = 2 * (int16_t)dx;
+  int16_t leftPupilX = (int16_t)pupilLocalX + pupilDx;
+  int16_t rightPupilX = (int16_t)(15 - pupilLocalX) + pupilDx;
+  if (leftPupilX >= 0 && leftPupilX < WIDTH) leds[xyToIndex((uint8_t)leftPupilX, pupilLocalY)] = pupil;
+  if (rightPupilX >= 0 && rightPupilX < WIDTH) leds[xyToIndex((uint8_t)rightPupilX, pupilLocalY)] = pupil;
 }
 
 // ============================================================
@@ -869,7 +991,7 @@ void patternBloodMoonEclipse() {
 
       // A one-LED feather lets each pixel dim gradually under the moving disc.
       float occlusion = smoothstep((moonRadius + 1.05f - moonDistance) / 2.10f);
-      leds[xyToIndex(x, y)] = eclipseMix(color, CRGB(1, 0, 2), occlusion);
+      leds[xyToIndex(x, y)] = eclipseMix(color, CRGB(0, 0, 0), occlusion);
     }
   }
 }
@@ -885,6 +1007,7 @@ PatternFunc patterns[] = {
   patternBreathingFog,
   patternFlowingSlime,
   patternBloodMoonEclipse,
+  patternPacManGhost,
 };
 
 void resetPatternState() {
@@ -898,6 +1021,7 @@ void resetPatternState() {
     case 2: breathingFogInit(); break;
     case 3: halloweenFlowInit(); break;
     case 4: break;  // Eclipse is derived entirely from frame; no state to reset.
+    case 5: break;  // Ghost is derived entirely from frame; no state to reset.
   }
 }
 
@@ -934,7 +1058,7 @@ void setup() {
   transitionStart = millis();
   fadingIn = true;
   transitioning = false;
-  Serial.println("DiffusePanel Halloween Ready - 5 patterns (90s, 3s fades)");
+  Serial.println("DiffusePanel Halloween Ready - 6 patterns (10s, 1s fades)");
 }
 
 void loop() {

@@ -11,11 +11,12 @@ from patterns.base import HEIGHT, NUM_LEDS, WIDTH, Pattern, hsv_to_rgb, xy_to_in
 from simulator.fastled_noise import inoise8_raw, qadd8
 
 BLACK = (0, 0, 0)
-ORANGE = (255, 72, 0)
-PURPLE = (150, 0, 255)
+ORANGE = (255, 58, 0)
+PURPLE = (170, 0, 210)
 BONE = (205, 220, 205)
 GHOST_WHITE = (175, 210, 220)
 SLIME_GREEN = (55, 235, 8)
+IVORY_WHITE = (255, 244, 205)
 
 
 def _clear(leds: list, color: tuple[int, int, int] = BLACK) -> None:
@@ -62,6 +63,9 @@ class HalloweenRingFade(Pattern):
         self.wave_color = random.choice((PURPLE, ORANGE))
         self.base_color = ORANGE if self.wave_color == PURPLE else PURPLE
         self.start_angle = random.uniform(0.0, math.tau)
+        # Orange's brighter luminance makes its wave read as narrower than
+        # purple's at the same falloff, so widen it with a gentler exponent.
+        self._wave_exponent = 2.0 if self.wave_color == ORANGE else 4.0
 
     def update(self, leds: list, frame: int) -> None:
         cx = (WIDTH - 1) / 2.0
@@ -80,7 +84,7 @@ class HalloweenRingFade(Pattern):
                 edge = (1.0 - ring_distance / 2.7) ** 2
                 pixel_angle = math.atan2(dy, dx)
                 angle_distance = abs((pixel_angle - peak_angle + math.pi) % math.tau - math.pi)
-                wave = ((1.0 + math.cos(angle_distance)) / 2.0) ** 4
+                wave = ((1.0 + math.cos(angle_distance)) / 2.0) ** self._wave_exponent
                 color = _blend(self.base_color, self.wave_color, wave)
                 _set(leds, x, y, _scale(color, edge * (0.72 + 0.28 * wave)))
 
@@ -177,6 +181,72 @@ class BedsheetGhost(Pattern):
             hem_y = 13 + bob + int(round(math.sin(x * 1.25 + frame * 0.13)))
             for y in range(11 + bob, hem_y + 1):
                 _set(leds, x, y, edge if y == hem_y else cloth)
+
+
+class PacManGhost(Pattern):
+    """A classic arcade ghost silhouette, recolored an off-white ivory.
+
+    Uses the familiar rounded-dome / straight-sided / three-lobed-foot shape,
+    with every curved edge (dome and hem) anti-aliased via fractional
+    brightness so the silhouette reads smoothly instead of stair-stepping.
+    """
+
+    name = "Pac-Man Ghost (White)"
+
+    # Corner radius used to round the dome into a smooth quarter-circle
+    # instead of a hard-edged staircase.
+    _DOME_RADIUS = 4.0
+    # The wavy hem is a continuous, feathered sine wave (three gentle lobes
+    # across the 14-column body) rather than a hard-edged lookup table, so
+    # the "feet" anti-alias smoothly instead of stair-stepping.
+    _FOOT_CENTER = 12.5
+    _FOOT_AMPLITUDE = 1.3
+    _FOOT_PERIODS = 3
+    _BOB_TOGGLE_FRAMES = 90  # constant bob cadence; eyes move at 2x this rate
+
+    def update(self, leds: list, frame: int) -> None:
+        _clear(leds)
+        pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
+        body = _scale(IVORY_WHITE, pulse)
+        bob = (frame // self._BOB_TOGGLE_FRAMES) % 2
+        eye_dx = (frame // (self._BOB_TOGGLE_FRAMES // 2)) % 2
+
+        # Gently sway the wave's phase so the feet sway side to side, rather
+        # than the previous hard two-frame swish. This stays independent of
+        # the vertical bob above.
+        phase_shift = math.sin(frame * 0.05) * 1.2
+        angular_freq = 2 * math.pi * self._FOOT_PERIODS / 14
+        r = self._DOME_RADIUS
+
+        for i, x in enumerate(range(1, 15)):
+            # Smooth circular corner: how far this column is inset from the
+            # top, rounded to a hard-edged row (no feathering on the dome).
+            edge_dist = min(x - 1, 14 - x)
+            edge_dist = max(0.0, min(r, edge_dist))
+            top_f = r - math.sqrt(max(0.0, r * r - (r - edge_dist) ** 2))
+            full_top = int(round(top_f)) + bob
+
+            wave = math.sin((i + phase_shift) * angular_freq + math.pi / 2)
+            bottom_f = self._FOOT_CENTER + wave * self._FOOT_AMPLITUDE
+
+            full_bottom = int(math.floor(bottom_f)) + bob
+            frac_bottom = bottom_f - math.floor(bottom_f)
+
+            for y in range(full_top, full_bottom + 1):
+                _set(leds, x, y, body)
+
+            # Feather only the hem's final row by its fractional coverage,
+            # for a smooth, anti-aliased point instead of a hard pixel cutoff.
+            if frac_bottom > 0.02:
+                _set(leds, x, full_bottom + 1, _scale(body, frac_bottom))
+
+        # Eyes are dark cutouts with a small cyan dot that drifts left/right
+        # at twice the bob's speed (vertical position still follows the bob).
+        for ex in (4, 10):
+            for dy in range(3):
+                for dx in range(2):
+                    _set(leds, ex + dx, 5 + dy + bob, BLACK)
+            _set(leds, ex + eye_dx, 6 + bob, (60, 220, 255))
 
 
 class _FlowingDrips(Pattern):
@@ -306,47 +376,80 @@ class LaughingPumpkin(Pattern):
 
 
 class EvilEyes(Pattern):
-    """A pair of slanted eyes that emerge from darkness and fade away."""
+    """A pair of slanted, glowing eyes that glance left/right as a whole,
+    while the pupil drifts the opposite direction inside the shifted eye."""
 
     name = "Evil Eyes"
 
+    # The whole eye (and, oppositely, the pupil) holds a look direction for
+    # a random stretch of frames before randomly picking a new one, so the
+    # timing and direction both vary.
+    _LOOK_HOLD_MIN = 70
+    _LOOK_HOLD_MAX = 110
+    # Blinking: a quick eyelid-closed slit, periodically.
+    _BLINK_PERIOD = 150
+    _BLINK_FRAMES = 6
+
+    # Inner corners point downward, producing an unmistakably angry slant.
+    _LEFT_EYE_CORE = ((0, 4), (1, 4), (2, 4), (3, 5), (4, 5), (5, 6), (6, 6),
+                       (1, 5), (2, 5), (3, 6), (4, 6), (5, 7), (6, 7),
+                       (2, 6), (3, 7), (4, 7))
+    # Base position (in the eye's own local coordinates) of the darker pupil
+    # pixel, before the eye-shift and opposing pupil offset are added.
+    _PUPIL_POS = (4, 6)
+
     def __init__(self):
         super().__init__()
-        # Pick one warm, readable eye color per activation.
+        # Pure green only (no red, no blue) per user request.
         self.eye_color = random.choice((
-            (255, 150, 0),
-            (255, 185, 0),
-            (255, 215, 20),
-            (235, 175, 25),
+            (0, 180, 0),
+            (0, 200, 0),
+            (0, 220, 0),
+            (0, 255, 0),
         ))
+        self._eye_dx = 0
+        self._next_look_frame = random.randint(self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX)
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
-        cycle = frame % 300
-        if cycle < 70:
-            fade = cycle / 70.0
-        elif cycle < 190:
-            fade = 1.0
-        elif cycle < 270:
-            fade = 1.0 - (cycle - 190) / 80.0
-        else:
-            fade = 0.0
-        fade = fade * fade * (3.0 - 2.0 * fade)
+        eye_color = self.eye_color
+        pupil_color = (0, 10, 0)
 
-        eye_color = _scale(self.eye_color, fade)
-        pupil_color = _scale((80, 35, 0), fade)
+        if frame % self._BLINK_PERIOD < self._BLINK_FRAMES:
+            # Closed eyelid: just a thin slit at the widest row, no pupil.
+            for x, y in ((2, 6), (3, 6), (4, 6), (5, 6), (6, 6)):
+                _set(leds, x, y, eye_color)
+                _set(leds, 15 - x, y, eye_color)
+            return
 
-        # Inner corners point downward, producing an unmistakably angry slant.
-        left_eye = ((0, 4), (1, 4), (2, 4), (3, 5), (4, 5), (5, 6), (6, 6),
-                    (1, 5), (2, 5), (3, 6), (4, 6), (5, 7), (6, 7),
-                    (2, 6), (3, 7), (4, 7))
-        right_eye = tuple((15 - x, y) for x, y in left_eye)
-        for x, y in left_eye + right_eye:
-            _set(leds, x, y, eye_color)
+        # Holding each look direction for a random stretch before randomly
+        # picking the next one. From an extreme it can only move back toward
+        # center or hold, so it always passes through center rather than
+        # jumping straight from one side to the other.
+        if frame >= self._next_look_frame:
+            if self._eye_dx == 0:
+                self._eye_dx = random.choice((-1, 0, 1))
+            else:
+                self._eye_dx = random.choice((0, self._eye_dx))
+            self._next_look_frame = frame + random.randint(
+                self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX
+            )
 
-        # TODO (optional): Use eye_color here too for a single-color eye shape.
-        for x, y in ((4, 6), (11, 6), (5, 6), (10, 6)):
-            _set(leds, x, y, pupil_color)
+        # Both eyes shift the same screen direction together (not mirrored),
+        # so the eyes look the same way instead of converging/diverging.
+        dx = self._eye_dx
+        for x, y in self._LEFT_EYE_CORE:
+            _set(leds, x + dx, y, eye_color)
+            _set(leds, 15 - x + dx, y, eye_color)
+
+        # The pupil moves the same direction as the eye but travels a bit
+        # further, so it's not just glued dead-center in the socket. At
+        # double the eye's shift it lands one step off-center -- still
+        # safely inside the socket, not at its edge.
+        px, py = self._PUPIL_POS
+        pupil_dx = 2 * dx
+        _set(leds, px + pupil_dx, py, pupil_color)
+        _set(leds, 15 - px + pupil_dx, py, pupil_color)
 
 
 class LaughingSkullCloseup(Pattern):

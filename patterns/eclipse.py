@@ -106,6 +106,6 @@ class BloodMoonEclipse(Pattern):
                 occlusion = max(0.0, min(1.0, occlusion))
                 occlusion = occlusion * occlusion * (3.0 - 2.0 * occlusion)
                 if occlusion > 0.0:
-                    color = self._mix(color, (1, 0, 2), occlusion)
+                    color = self._mix(color, (0, 0, 0), occlusion)
 
                 leds[xy_to_index(x, y)] = color
