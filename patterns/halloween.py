@@ -12,7 +12,7 @@ from simulator.fastled_noise import inoise8_raw, qadd8
 
 BLACK = (0, 0, 0)
 ORANGE = (255, 72, 0)
-PURPLE = (150, 0, 255)
+PURPLE = (170, 0, 210)
 BONE = (205, 220, 205)
 GHOST_WHITE = (175, 210, 220)
 SLIME_GREEN = (55, 235, 8)

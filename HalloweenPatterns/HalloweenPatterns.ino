@@ -611,9 +611,9 @@ void halloweenRingInit() {
   halloweenRingDirection = (random8() < 128) ? 1.0f : -1.0f;
   if (random8() < 128) {
     halloweenRingBaseColor = CRGB(255, 72, 0);
-    halloweenRingWaveColor = CRGB(150, 0, 255);
+    halloweenRingWaveColor = CRGB(170, 0, 210);
   } else {
-    halloweenRingBaseColor = CRGB(150, 0, 255);
+    halloweenRingBaseColor = CRGB(170, 0, 210);
     halloweenRingWaveColor = CRGB(255, 72, 0);
   }
 }
