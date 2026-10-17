@@ -179,6 +179,52 @@ class BedsheetGhost(Pattern):
                 _set(leds, x, y, edge if y == hem_y else cloth)
 
 
+class PacManGhost(Pattern):
+    """A classic arcade ghost silhouette, recolored stark white.
+
+    Uses the familiar rounded-dome / straight-sided / three-lobed-foot shape
+    with a pair of wandering eyes, scaled to the panel's native resolution.
+    """
+
+    name = "Pac-Man Ghost (White)"
+
+    # Per-column (x = 1..14) top row of the dome, rounding the corners.
+    _DOME_TOP = {1: 4, 2: 3, 3: 2, 4: 1, 5: 0, 6: 0, 7: 0, 8: 0,
+                 9: 0, 10: 0, 11: 1, 12: 2, 13: 3, 14: 4}
+    # Per-column bottom row: three rounded feet separated by single-column
+    # notches, matching the ghost's trademark wavy hem.
+    _FOOT_BOTTOM = {1: 13, 2: 15, 3: 15, 4: 13, 5: 11,
+                    6: 13, 7: 15, 8: 15, 9: 13, 10: 11,
+                    11: 13, 12: 15, 13: 15, 14: 13}
+
+    def __init__(self):
+        super().__init__()
+        self.look_phase = random.uniform(0.0, math.tau)
+
+    def update(self, leds: list, frame: int) -> None:
+        _clear(leds)
+        bob = int(round(math.sin(frame * 0.04)))
+        pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
+        body = _scale((255, 255, 255), pulse)
+
+        for x in range(1, 15):
+            top = self._DOME_TOP[x] + bob
+            bottom = self._FOOT_BOTTOM[x] + bob
+            for y in range(top, bottom + 1):
+                _set(leds, x, y, body)
+
+        # Eyes slowly wander left/right/up/down, like the arcade sprite.
+        look_x = int(round(math.sin(frame * 0.025 + self.look_phase)))
+        look_y = int(round(math.sin(frame * 0.017 + self.look_phase) * 0.5))
+        sclera = (215, 230, 255)
+        pupil = (20, 50, 170)
+        for ex in (4, 10):
+            for dy in range(3):
+                for dx in range(2):
+                    _set(leds, ex + dx, 5 + dy + bob, sclera)
+            _set(leds, ex + 1 + look_x, 6 + look_y + bob, pupil)
+
+
 class _FlowingDrips(Pattern):
     """Shared downward-stream motion for the green ooze."""
 

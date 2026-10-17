@@ -15,6 +15,7 @@ from patterns.halloween import (
     EvilEyes,
     FlowingSlime,
     HalloweenRingFade,
+    PacManGhost,
 )
 
 ALL_PATTERNS = [
@@ -22,6 +23,7 @@ ALL_PATTERNS = [
     EvilEyes,
     BreathingFog,
     FlowingSlime,
+    PacManGhost,
     BloodMoonEclipse,
     CreepingMoss,
     FallingSand,
