@@ -379,8 +379,8 @@ class EvilEyes(Pattern):
 
     # The pupil holds a look direction for a random stretch of frames before
     # randomly picking a new one, so the timing and direction both vary.
-    _LOOK_HOLD_MIN = 90
-    _LOOK_HOLD_MAX = 220
+    _LOOK_HOLD_MIN = 45
+    _LOOK_HOLD_MAX = 110
     # Blinking: a quick eyelid-closed slit, periodically.
     _BLINK_PERIOD = 150
     _BLINK_FRAMES = 6
