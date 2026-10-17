@@ -688,7 +688,7 @@ void renderHalloweenFlow(const CRGB &background, const CRGB &stream,
       if (y < tail || y > flowFront[x]) continue;
       float depth = max(0.0f, flowFront[x] - y);
       float shimmer = 0.80f + 0.20f * sinf(frame * 0.08f + x * 1.7f + y * 0.3f);
-      float brightness = (0.08f + 0.92f * expf(-depth / 4.5f)) * shimmer;
+      float brightness = (0.03f + 0.97f * expf(-depth / 3.0f)) * shimmer;
       CRGB color = stream;
       color.nscale8_video((uint8_t)(brightness * 255.0f));
       leds[xyToIndex(x, y)] = color;

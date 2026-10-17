@@ -275,7 +275,7 @@ class _FlowingDrips(Pattern):
                 if tail <= y <= front:
                     depth = max(0.0, front - y)
                     shimmer = 0.80 + 0.20 * math.sin(frame * 0.08 + x * 1.7 + y * 0.3)
-                    brightness = (0.42 + 0.58 * math.exp(-depth / 8.0)) * shimmer
+                    brightness = (0.03 + 0.97 * math.exp(-depth / 3.0)) * shimmer
                     _set(leds, x, y, _scale(self.stream_color, brightness))
 
             # Rounded bright bead at the tip of occasional thicker drips.
