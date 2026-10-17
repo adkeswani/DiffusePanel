@@ -418,9 +418,10 @@ class EvilEyes(Pattern):
         # slow look-around cycle, staying within the eye's open span.
         look_step = (frame // self._LOOK_FRAMES) % 4
         pupil_dx = (-1, 0, 1, 0)[look_step]
-        px = 4 + pupil_dx
-        _set(leds, px, 6, pupil_color)
-        _set(leds, 15 - px, 6, pupil_color)
+        # Both pupils shift the same screen direction together (not mirrored),
+        # so the eyes look the same way instead of converging/diverging.
+        _set(leds, 4 + pupil_dx, 6, pupil_color)
+        _set(leds, 11 + pupil_dx, 6, pupil_color)
 
 
 class LaughingSkullCloseup(Pattern):
