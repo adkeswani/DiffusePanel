@@ -373,16 +373,14 @@ class LaughingPumpkin(Pattern):
 
 
 class EvilEyes(Pattern):
-    """A pair of slanted eyes that emerge from darkness and fade away."""
+    """A pair of slanted, glowing eyes with a drifting pupil and a blink."""
 
     name = "Evil Eyes"
 
-    # The look-around cycle: pupils drift left, center, right, center.
+    # The look-around cycle: pupil drifts left, center, right, center.
     _LOOK_FRAMES = 40
-    # Blinking: a quick eyelid-closed slit, twice per activation while the
-    # eyes are fully visible (not during the fade in/out).
-    _BLINK_START = 130
-    _BLINK_PERIOD = 100
+    # Blinking: a quick eyelid-closed slit, periodically.
+    _BLINK_PERIOD = 150
     _BLINK_FRAMES = 6
 
     def __init__(self):
@@ -397,19 +395,8 @@ class EvilEyes(Pattern):
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
-        cycle = frame % 300
-        if cycle < 70:
-            fade = cycle / 70.0
-        elif cycle < 190:
-            fade = 1.0
-        elif cycle < 270:
-            fade = 1.0 - (cycle - 190) / 80.0
-        else:
-            fade = 0.0
-        fade = fade * fade * (3.0 - 2.0 * fade)
-
-        eye_color = _scale(self.eye_color, fade)
-        pupil_color = _scale((80, 35, 0), fade)
+        eye_color = self.eye_color
+        pupil_color = (80, 35, 0)
 
         # Inner corners point downward, producing an unmistakably angry slant.
         left_eye = ((0, 4), (1, 4), (2, 4), (3, 5), (4, 5), (5, 6), (6, 6),
@@ -417,11 +404,7 @@ class EvilEyes(Pattern):
                     (2, 6), (3, 7), (4, 7))
         right_eye = tuple((15 - x, y) for x, y in left_eye)
 
-        blinking = (
-            70 <= cycle < 270
-            and (cycle - self._BLINK_START) % self._BLINK_PERIOD < self._BLINK_FRAMES
-        )
-        if blinking:
+        if frame % self._BLINK_PERIOD < self._BLINK_FRAMES:
             # Closed eyelid: just a thin slit at the widest row, no pupil.
             for x, y in ((2, 6), (3, 6), (4, 6), (5, 6), (6, 6)):
                 _set(leds, x, y, eye_color)
@@ -431,13 +414,13 @@ class EvilEyes(Pattern):
         for x, y in left_eye + right_eye:
             _set(leds, x, y, eye_color)
 
-        # Pupils drift left/right across the widest row in a slow look-around
-        # cycle, staying within the eye's open span (cols 2-6).
+        # A single-pixel pupil drifts left/right across the widest row in a
+        # slow look-around cycle, staying within the eye's open span.
         look_step = (frame // self._LOOK_FRAMES) % 4
         pupil_dx = (-1, 0, 1, 0)[look_step]
-        for x, y in ((4, 6), (5, 6)):
-            _set(leds, x + pupil_dx, y, pupil_color)
-            _set(leds, 15 - (x + pupil_dx), y, pupil_color)
+        px = 4 + pupil_dx
+        _set(leds, px, 6, pupil_color)
+        _set(leds, 15 - px, 6, pupil_color)
 
 
 class LaughingSkullCloseup(Pattern):
