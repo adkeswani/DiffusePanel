@@ -779,6 +779,8 @@ void patternPacManGhost() {
 // Halloween Pattern: Evil Eyes
 // ============================================================
 static CRGB evilEyeColor;
+static int8_t evilEyesPupilDx = 0;
+static uint32_t evilEyesNextLookFrame = 0;
 
 void evilEyesInit() {
   static const CRGB golds[] = {
@@ -786,28 +788,36 @@ void evilEyesInit() {
     CRGB(255, 215, 20), CRGB(235, 175, 25)
   };
   evilEyeColor = golds[random8(0, 4)];
+  evilEyesPupilDx = 0;
+  evilEyesNextLookFrame = random(70, 111);
 }
 
 void patternEvilEyes() {
   fill_solid(leds, NUM_LEDS, CRGB::Black);
-  uint16_t cycle = frame % 300;
-  float fade;
-  if (cycle < 70) fade = (float)cycle / 70.0f;
-  else if (cycle < 190) fade = 1.0f;
-  else if (cycle < 270) fade = 1.0f - (float)(cycle - 190) / 80.0f;
-  else fade = 0.0f;
-  fade = smoothstep(fade);
+
+  const uint16_t blinkPeriod = 150;
+  const uint16_t blinkFrames = 6;
 
   CRGB eye = evilEyeColor;
-  eye.nscale8_video((uint8_t)(fade * 255.0f));
   CRGB pupil(80, 35, 0);
-  pupil.nscale8_video((uint8_t)(fade * 255.0f));
 
   static const uint8_t leftEye[][2] = {
     {0,4}, {1,4}, {2,4}, {3,5}, {4,5}, {5,6}, {6,6},
     {1,5}, {2,5}, {3,6}, {4,6}, {5,7}, {6,7},
     {2,6}, {3,7}, {4,7}
   };
+
+  if (frame % blinkPeriod < blinkFrames) {
+    // Closed eyelid: just a thin slit at the widest row, no pupil.
+    static const uint8_t slit[] = {2, 3, 4, 5, 6};
+    for (uint8_t i = 0; i < 5; i++) {
+      uint8_t x = slit[i];
+      leds[xyToIndex(x, 6)] = eye;
+      leds[xyToIndex(15 - x, 6)] = eye;
+    }
+    return;
+  }
+
   for (uint8_t i = 0; i < sizeof(leftEye) / sizeof(leftEye[0]); i++) {
     uint8_t x = leftEye[i][0];
     uint8_t y = leftEye[i][1];
@@ -815,11 +825,23 @@ void patternEvilEyes() {
     leds[xyToIndex(15 - x, y)] = eye;
   }
 
-  // TODO (optional): use eye here too for a single-color eye shape.
-  static const uint8_t pupils[][2] = {{4,6}, {11,6}, {5,6}, {10,6}};
-  for (uint8_t i = 0; i < 4; i++) {
-    leds[xyToIndex(pupils[i][0], pupils[i][1])] = pupil;
+  // A single-pixel pupil drifts left/right across the widest row, holding
+  // each look direction for a random stretch before randomly picking the
+  // next one. From an extreme it can only move back toward center or hold,
+  // so it always passes through center rather than jumping side to side.
+  if (frame >= evilEyesNextLookFrame) {
+    if (evilEyesPupilDx == 0) {
+      evilEyesPupilDx = (int8_t)random(-1, 2);  // -1, 0, or 1
+    } else {
+      evilEyesPupilDx = (random8() < 128) ? 0 : evilEyesPupilDx;
+    }
+    evilEyesNextLookFrame = frame + random(70, 111);
   }
+
+  // Both pupils shift the same screen direction together (not mirrored), so
+  // the eyes look the same way instead of converging/diverging.
+  leds[xyToIndex(4 + evilEyesPupilDx, 6)] = pupil;
+  leds[xyToIndex(11 + evilEyesPupilDx, 6)] = pupil;
 }
 
 // ============================================================
