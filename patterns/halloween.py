@@ -202,13 +202,16 @@ class PacManGhost(Pattern):
     _PUPIL_TOGGLE_FRAMES = 40  # slow left/right dot shift
     _EDGE_GLOW = 0.18  # faint halo feathering the straight side edges
     _BOB_SPEED = 0.018  # slow vertical float
+    # Shifts the whole silhouette down by one row so the upward half of the
+    # bob never clips off the top of the panel.
+    _BASE_Y_OFFSET = 1
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
         pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
         body = _scale(IVORY_WHITE, pulse)
         glow = _scale(body, self._EDGE_GLOW)
-        bob = int(round(math.sin(frame * self._BOB_SPEED)))
+        bob = int(round(math.sin(frame * self._BOB_SPEED))) + self._BASE_Y_OFFSET
 
         # Gently sway the wave's phase so the feet sway side to side, rather
         # than the previous hard two-frame swish. This stays independent of
