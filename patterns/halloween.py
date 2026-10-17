@@ -385,16 +385,10 @@ class EvilEyes(Pattern):
     _BLINK_PERIOD = 150
     _BLINK_FRAMES = 6
 
-    # Core eye shape (full brightness) plus two small feathered tips that
-    # round off the sharpest corners, continuing the slant without adding a
-    # scattered halo.
+    # Inner corners point downward, producing an unmistakably angry slant.
     _LEFT_EYE_CORE = ((0, 4), (1, 4), (2, 4), (3, 5), (4, 5), (5, 6), (6, 6),
                        (1, 5), (2, 5), (3, 6), (4, 6), (5, 7), (6, 7),
                        (2, 6), (3, 7), (4, 7))
-    _LEFT_EYE_FEATHER = {
-        (0, 3): 0.45,
-        (7, 7): 0.45,
-    }
 
     def __init__(self):
         super().__init__()
@@ -423,11 +417,6 @@ class EvilEyes(Pattern):
         for x, y in self._LEFT_EYE_CORE:
             _set(leds, x, y, eye_color)
             _set(leds, 15 - x, y, eye_color)
-        for (x, y), amount in self._LEFT_EYE_FEATHER.items():
-            feathered = _scale(eye_color, amount)
-            _set(leds, x, y, feathered)
-            _set(leds, 15 - x, y, feathered)
-
         # A single-pixel pupil drifts left/right across the widest row,
         # holding each look direction for a random stretch before randomly
         # picking the next one. From an extreme it can only move back toward

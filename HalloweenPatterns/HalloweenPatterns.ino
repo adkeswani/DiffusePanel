@@ -807,17 +807,11 @@ void patternEvilEyes() {
   CRGB eye = evilEyeColor;
   CRGB pupil = CRGB::Black;
 
-  // Core eye shape (full brightness) plus two small feathered tips that
-  // round off the sharpest corners, continuing the slant without adding a
-  // scattered halo.
+  // Inner corners point downward, producing an unmistakably angry slant.
   static const uint8_t leftEyeCore[][2] = {
     {0,4}, {1,4}, {2,4}, {3,5}, {4,5}, {5,6}, {6,6},
     {1,5}, {2,5}, {3,6}, {4,6}, {5,7}, {6,7},
     {2,6}, {3,7}, {4,7}
-  };
-  static const uint8_t leftEyeFeather[][3] = {
-    {0,3,115},
-    {7,7,115}
   };
 
   if (frame % blinkPeriod < blinkFrames) {
@@ -837,15 +831,6 @@ void patternEvilEyes() {
     leds[xyToIndex(x, y)] = eye;
     leds[xyToIndex(15 - x, y)] = eye;
   }
-  for (uint8_t i = 0; i < sizeof(leftEyeFeather) / sizeof(leftEyeFeather[0]); i++) {
-    uint8_t x = leftEyeFeather[i][0];
-    uint8_t y = leftEyeFeather[i][1];
-    CRGB feathered = eye;
-    feathered.nscale8_video(leftEyeFeather[i][2]);
-    leds[xyToIndex(x, y)] = feathered;
-    leds[xyToIndex(15 - x, y)] = feathered;
-  }
-
   // A single-pixel pupil drifts left/right across the widest row, holding
   // each look direction for a random stretch before randomly picking the
   // next one. From an extreme it can only move back toward center or hold,
