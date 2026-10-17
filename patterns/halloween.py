@@ -199,17 +199,20 @@ class PacManGhost(Pattern):
     _FOOT_CENTER = 12.5
     _FOOT_AMPLITUDE = 1.3
     _FOOT_PERIODS = 3
-    _PUPIL_TOGGLE_FRAMES = 20  # slow left/right dot shift
+    _PUPIL_TOGGLE_FRAMES = 40  # slow left/right dot shift
     _EDGE_GLOW = 0.18  # faint halo feathering the straight side edges
+    _BOB_SPEED = 0.018  # slow vertical float
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
         pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
         body = _scale(IVORY_WHITE, pulse)
         glow = _scale(body, self._EDGE_GLOW)
+        bob = int(round(math.sin(frame * self._BOB_SPEED)))
 
         # Gently sway the wave's phase so the feet sway side to side, rather
-        # than the previous hard two-frame swish.
+        # than the previous hard two-frame swish. This stays independent of
+        # the (slower) vertical bob above.
         phase_shift = math.sin(frame * 0.05) * 1.2
         angular_freq = 2 * math.pi * self._FOOT_PERIODS / 14
         r = self._DOME_RADIUS
@@ -224,12 +227,12 @@ class PacManGhost(Pattern):
             wave = math.sin((i + phase_shift) * angular_freq + math.pi / 2)
             bottom_f = self._FOOT_CENTER + wave * self._FOOT_AMPLITUDE
 
-            floor_top = int(math.floor(top_f))
-            frac_top = top_f - floor_top
+            floor_top = int(math.floor(top_f)) + bob
+            frac_top = top_f - math.floor(top_f)
             full_top = floor_top + 1 if frac_top > 0.02 else floor_top
 
-            full_bottom = int(math.floor(bottom_f))
-            frac_bottom = bottom_f - full_bottom
+            full_bottom = int(math.floor(bottom_f)) + bob
+            frac_bottom = bottom_f - math.floor(bottom_f)
 
             for y in range(full_top, full_bottom + 1):
                 _set(leds, x, y, body)
@@ -250,13 +253,13 @@ class PacManGhost(Pattern):
                 for y in range(full_top, full_bottom + 1):
                     _set(leds, 15, y, glow)
 
-        # Eyes are dark cutouts with a small blue dot that drifts left/right.
+        # Eyes are dark cutouts with a small cyan dot that drifts left/right.
         pupil_dx = 1 if (frame // self._PUPIL_TOGGLE_FRAMES) % 2 else 0
         for ex in (4, 10):
             for dy in range(3):
                 for dx in range(2):
-                    _set(leds, ex + dx, 5 + dy, BLACK)
-            _set(leds, ex + pupil_dx, 6, (40, 90, 255))
+                    _set(leds, ex + dx, 5 + dy + bob, BLACK)
+            _set(leds, ex + pupil_dx, 6 + bob, (60, 220, 255))
 
 
 class _FlowingDrips(Pattern):
