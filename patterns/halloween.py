@@ -183,7 +183,8 @@ class PacManGhost(Pattern):
     """A classic arcade ghost silhouette, recolored stark white.
 
     Uses the familiar rounded-dome / straight-sided / three-lobed-foot shape
-    with a pair of wandering eyes, scaled to the panel's native resolution.
+    with a pair of simple dark eye cutouts, scaled to the panel's native
+    resolution.
     """
 
     name = "Pac-Man Ghost (White)"
@@ -196,10 +197,6 @@ class PacManGhost(Pattern):
     # This base shape is shifted each frame to animate the feet.
     _FOOT_BASE = [13, 15, 15, 13, 11, 13, 15, 15, 13, 11, 13, 15, 15, 13]
     _FOOT_TOGGLE_FRAMES = 8  # classic two-frame arcade "swish" cadence
-
-    def __init__(self):
-        super().__init__()
-        self.look_phase = random.uniform(0.0, math.tau)
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
@@ -219,16 +216,11 @@ class PacManGhost(Pattern):
             for y in range(top, bottom + 1):
                 _set(leds, x, y, body)
 
-        # Eyes slowly wander left/right/up/down, like the arcade sprite.
-        look_x = int(round(math.sin(frame * 0.025 + self.look_phase)))
-        look_y = int(round(math.sin(frame * 0.017 + self.look_phase) * 0.5))
-        sclera = (215, 230, 255)
-        pupil = (20, 50, 170)
+        # Eyes are simply dark, unlit cutouts against the white body.
         for ex in (4, 10):
             for dy in range(3):
                 for dx in range(2):
-                    _set(leds, ex + dx, 5 + dy + bob, sclera)
-            _set(leds, ex + 1 + look_x, 6 + look_y + bob, pupil)
+                    _set(leds, ex + dx, 5 + dy + bob, BLACK)
 
 
 class _FlowingDrips(Pattern):
