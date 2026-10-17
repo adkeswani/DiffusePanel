@@ -805,7 +805,7 @@ void patternEvilEyes() {
   const uint16_t blinkFrames = 6;
 
   CRGB eye = evilEyeColor;
-  CRGB pupil = CRGB(0, 12, 0);
+  CRGB pupil = CRGB(0, 10, 0);
 
   // Inner corners point downward, producing an unmistakably angry slant.
   static const uint8_t leftEyeCore[][2] = {
