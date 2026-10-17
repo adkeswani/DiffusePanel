@@ -405,7 +405,7 @@ class EvilEyes(Pattern):
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
         eye_color = self.eye_color
-        pupil_color = BLACK
+        pupil_color = (0, 60, 0)
 
         if frame % self._BLINK_PERIOD < self._BLINK_FRAMES:
             # Closed eyelid: just a thin slit at the widest row, no pupil.
