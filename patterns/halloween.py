@@ -377,8 +377,10 @@ class EvilEyes(Pattern):
 
     name = "Evil Eyes"
 
-    # The look-around cycle: pupil drifts left, center, right, center.
-    _LOOK_FRAMES = 40
+    # The pupil holds a look direction for a random stretch of frames before
+    # randomly picking a new one, so the timing and direction both vary.
+    _LOOK_HOLD_MIN = 90
+    _LOOK_HOLD_MAX = 220
     # Blinking: a quick eyelid-closed slit, periodically.
     _BLINK_PERIOD = 150
     _BLINK_FRAMES = 6
@@ -392,6 +394,8 @@ class EvilEyes(Pattern):
             (255, 215, 20),
             (235, 175, 25),
         ))
+        self._pupil_dx = 0
+        self._next_look_frame = random.randint(self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX)
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
@@ -414,10 +418,15 @@ class EvilEyes(Pattern):
         for x, y in left_eye + right_eye:
             _set(leds, x, y, eye_color)
 
-        # A single-pixel pupil drifts left/right across the widest row in a
-        # slow look-around cycle, staying within the eye's open span.
-        look_step = (frame // self._LOOK_FRAMES) % 4
-        pupil_dx = (-1, 0, 1, 0)[look_step]
+        # A single-pixel pupil drifts left/right across the widest row,
+        # holding each look direction for a random stretch before randomly
+        # picking the next one (timing and direction both vary).
+        if frame >= self._next_look_frame:
+            self._pupil_dx = random.choice((-1, 0, 1))
+            self._next_look_frame = frame + random.randint(
+                self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX
+            )
+        pupil_dx = self._pupil_dx
         # Both pupils shift the same screen direction together (not mirrored),
         # so the eyes look the same way instead of converging/diverging.
         _set(leds, 4 + pupil_dx, 6, pupil_color)
