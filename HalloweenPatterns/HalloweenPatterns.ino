@@ -50,11 +50,16 @@ struct BokehOrb;
 void bokehResetOrb(BokehOrb &o);
 
 // === Coordinate Mapping (serpentine wiring) ===
+// The physical panel is mounted/wired 90 degrees rotated relative to the
+// logical x/y axes used by every pattern (and by the Python simulator), so
+// swap axes once here instead of touching each pattern's math. Without this,
+// motion intended to be horizontal (e.g. the Blood Moon Eclipse's moon)
+// instead appears vertical on real hardware.
 uint16_t xyToIndex(uint8_t x, uint8_t y) {
-  if (y % 2 == 0) {
-    return y * WIDTH + x;
+  if (x % 2 == 0) {
+    return x * HEIGHT + y;
   } else {
-    return y * WIDTH + (WIDTH - 1 - x);
+    return x * HEIGHT + (HEIGHT - 1 - y);
   }
 }
 
