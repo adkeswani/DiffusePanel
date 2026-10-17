@@ -605,6 +605,7 @@ static float halloweenRingStartAngle = 0.0f;
 static float halloweenRingDirection = 1.0f;
 static CRGB halloweenRingBaseColor;
 static CRGB halloweenRingWaveColor;
+static float halloweenRingWaveExponent = 4.0f;
 
 void halloweenRingInit() {
   halloweenRingStartAngle = random16(0, 628) / 100.0f;
@@ -612,9 +613,13 @@ void halloweenRingInit() {
   if (random8() < 128) {
     halloweenRingBaseColor = CRGB(255, 58, 0);
     halloweenRingWaveColor = CRGB(170, 0, 210);
+    halloweenRingWaveExponent = 4.0f;
   } else {
     halloweenRingBaseColor = CRGB(170, 0, 210);
     halloweenRingWaveColor = CRGB(255, 58, 0);
+    // Orange's brighter luminance makes its wave read as narrower than
+    // purple's at the same falloff, so widen it with a gentler exponent.
+    halloweenRingWaveExponent = 2.0f;
   }
 }
 
@@ -642,7 +647,7 @@ void patternHalloweenRing() {
       float angleDistance = fabsf(fmodf(pixelAngle - peakAngle + 3.0f * PI,
                                         2.0f * PI) - PI);
       float wave = 0.5f * (1.0f + cosf(angleDistance));
-      wave = wave * wave * wave * wave;
+      wave = powf(wave, halloweenRingWaveExponent);
       CRGB color = blend(halloweenRingBaseColor, halloweenRingWaveColor,
                          (uint8_t)(wave * 255.0f));
       uint8_t scale = (uint8_t)(255.0f * edge * (0.72f + 0.28f * wave));

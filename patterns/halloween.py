@@ -63,6 +63,9 @@ class HalloweenRingFade(Pattern):
         self.wave_color = random.choice((PURPLE, ORANGE))
         self.base_color = ORANGE if self.wave_color == PURPLE else PURPLE
         self.start_angle = random.uniform(0.0, math.tau)
+        # Orange's brighter luminance makes its wave read as narrower than
+        # purple's at the same falloff, so widen it with a gentler exponent.
+        self._wave_exponent = 2.0 if self.wave_color == ORANGE else 4.0
 
     def update(self, leds: list, frame: int) -> None:
         cx = (WIDTH - 1) / 2.0
@@ -81,7 +84,7 @@ class HalloweenRingFade(Pattern):
                 edge = (1.0 - ring_distance / 2.7) ** 2
                 pixel_angle = math.atan2(dy, dx)
                 angle_distance = abs((pixel_angle - peak_angle + math.pi) % math.tau - math.pi)
-                wave = ((1.0 + math.cos(angle_distance)) / 2.0) ** 4
+                wave = ((1.0 + math.cos(angle_distance)) / 2.0) ** self._wave_exponent
                 color = _blend(self.base_color, self.wave_color, wave)
                 _set(leds, x, y, _scale(color, edge * (0.72 + 0.28 * wave)))
 
