@@ -704,7 +704,7 @@ void renderHalloweenFlow(const CRGB &background, const CRGB &stream,
 
 void patternFlowingSlime() {
   renderHalloweenFlow(CRGB(3, 0, 0), CRGB(195, 2, 1),
-                      CRGB(255, 25, 8), CRGB(130, 1, 1));
+                      CRGB(255, 0, 0), CRGB(130, 1, 1));
 }
 
 // ============================================================
