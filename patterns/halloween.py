@@ -199,16 +199,8 @@ class PacManGhost(Pattern):
     _FOOT_CENTER = 12.5
     _FOOT_AMPLITUDE = 1.3
     _FOOT_PERIODS = 3
-    _PUPIL_TOGGLE_FRAMES = 40  # fastest left/right dot cadence (min frames)
     _EDGE_GLOW = 0.18  # faint halo feathering the straight side edges
-    _BOB_TOGGLE_FRAMES = 90  # constant bob cadence
-
-    def __init__(self):
-        super().__init__()
-        # Randomize only the eye-drift pace per activation; the bob stays at
-        # a constant cadence.
-        self.pupil_toggle_frames = random.randint(
-            self._PUPIL_TOGGLE_FRAMES, self._PUPIL_TOGGLE_FRAMES * 3)
+    _BOB_TOGGLE_FRAMES = 90  # constant bob cadence; eyes move in lockstep
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
@@ -255,13 +247,13 @@ class PacManGhost(Pattern):
                 for y in range(full_top, full_bottom + 1):
                     _set(leds, 15, y, glow)
 
-        # Eyes are dark cutouts with a small cyan dot that drifts left/right.
-        pupil_dx = 1 if (frame // self.pupil_toggle_frames) % 2 else 0
+        # Eyes are dark cutouts with a small cyan dot that drifts left/right
+        # in lockstep with the bob.
         for ex in (4, 10):
             for dy in range(3):
                 for dx in range(2):
                     _set(leds, ex + dx, 5 + dy + bob, BLACK)
-            _set(leds, ex + pupil_dx, 6 + bob, (60, 220, 255))
+            _set(leds, ex + bob, 6 + bob, (60, 220, 255))
 
 
 class _FlowingDrips(Pattern):
