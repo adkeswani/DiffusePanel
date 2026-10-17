@@ -199,16 +199,25 @@ class PacManGhost(Pattern):
     _FOOT_CENTER = 12.5
     _FOOT_AMPLITUDE = 1.3
     _FOOT_PERIODS = 3
-    _PUPIL_TOGGLE_FRAMES = 40  # slow left/right dot shift
+    _PUPIL_TOGGLE_FRAMES = 40  # fastest left/right dot cadence (min frames)
     _EDGE_GLOW = 0.18  # faint halo feathering the straight side edges
-    _BOB_TOGGLE_FRAMES = 90  # slow down/neutral bob cadence
+    _BOB_TOGGLE_FRAMES = 90  # fastest bob cadence (min frames)
+
+    def __init__(self):
+        super().__init__()
+        # Randomize each activation's pace, using the base cadences above as
+        # the fastest (max speed) the bob/eyes are ever allowed to move.
+        self.bob_toggle_frames = random.randint(
+            self._BOB_TOGGLE_FRAMES, self._BOB_TOGGLE_FRAMES * 3)
+        self.pupil_toggle_frames = random.randint(
+            self._PUPIL_TOGGLE_FRAMES, self._PUPIL_TOGGLE_FRAMES * 3)
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
         pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
         body = _scale(IVORY_WHITE, pulse)
         glow = _scale(body, self._EDGE_GLOW)
-        bob = (frame // self._BOB_TOGGLE_FRAMES) % 2
+        bob = (frame // self.bob_toggle_frames) % 2
 
         # Gently sway the wave's phase so the feet sway side to side, rather
         # than the previous hard two-frame swish. This stays independent of
@@ -254,7 +263,7 @@ class PacManGhost(Pattern):
                     _set(leds, 15, y, glow)
 
         # Eyes are dark cutouts with a small cyan dot that drifts left/right.
-        pupil_dx = 1 if (frame // self._PUPIL_TOGGLE_FRAMES) % 2 else 0
+        pupil_dx = 1 if (frame // self.pupil_toggle_frames) % 2 else 0
         for ex in (4, 10):
             for dy in range(3):
                 for dx in range(2):
