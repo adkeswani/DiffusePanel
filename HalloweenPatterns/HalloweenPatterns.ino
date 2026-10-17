@@ -860,13 +860,12 @@ void patternEvilEyes() {
     if (rightX >= 0 && rightX < WIDTH) leds[xyToIndex((uint8_t)rightX, y)] = eye;
   }
 
-  // The pupil moves on the same slow cycle but in the opposite direction,
-  // so it drifts counter to the socket around it.
-  int16_t pupilDx = -(int16_t)dx;
-  int16_t leftPupilX = (int16_t)pupilLocalX + pupilDx;
-  int16_t rightPupilX = (int16_t)(15 - pupilLocalX) + pupilDx;
-  if (leftPupilX >= 0 && leftPupilX < WIDTH) leds[xyToIndex((uint8_t)leftPupilX, pupilLocalY)] = pupil;
-  if (rightPupilX >= 0 && rightPupilX < WIDTH) leds[xyToIndex((uint8_t)rightPupilX, pupilLocalY)] = pupil;
+  // The pupil stays put on screen while the socket shifts around it, which
+  // reads as the pupil drifting one pixel the opposite way relative to the
+  // eye -- without doubling up to two pixels of travel (which pushed it
+  // out to the socket's edge).
+  leds[xyToIndex(pupilLocalX, pupilLocalY)] = pupil;
+  leds[xyToIndex(15 - pupilLocalX, pupilLocalY)] = pupil;
 }
 
 // ============================================================

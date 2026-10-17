@@ -442,12 +442,13 @@ class EvilEyes(Pattern):
             _set(leds, x + dx, y, eye_color)
             _set(leds, 15 - x + dx, y, eye_color)
 
-        # The pupil moves on the same slow cycle but in the opposite
-        # direction, so it drifts counter to the socket around it.
+        # The pupil stays put on screen while the socket shifts around it,
+        # which reads as the pupil drifting one pixel the opposite way
+        # relative to the eye -- without doubling up to two pixels of
+        # travel (which pushed it out to the socket's edge).
         px, py = self._PUPIL_POS
-        pupil_dx = -dx
-        _set(leds, px + pupil_dx, py, pupil_color)
-        _set(leds, 15 - px + pupil_dx, py, pupil_color)
+        _set(leds, px, py, pupil_color)
+        _set(leds, 15 - px, py, pupil_color)
 
 
 class LaughingSkullCloseup(Pattern):
