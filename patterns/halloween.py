@@ -246,60 +246,6 @@ class PacManGhost(Pattern):
             _set(leds, ex + eye_dx, 6 + bob, (60, 220, 255))
 
 
-class CreepySpider(Pattern):
-    """A chunky ivory spider that skitters with an alternating leg gait."""
-
-    name = "Creepy Spider"
-
-    # Diamond-shaped body (rows/cols local to the shape before offsetting).
-    _BODY = [
-        (2, 3), (2, 4), (2, 5),
-        (3, 2), (3, 3), (3, 4), (3, 5), (3, 6),
-        (4, 1), (4, 2), (4, 3), (4, 4), (4, 5), (4, 6), (4, 7),
-        (5, 2), (5, 3), (5, 4), (5, 5), (5, 6),
-        (6, 3), (6, 4), (6, 5),
-    ]
-
-    # Each leg is two pixels reaching out from a body corner. The row of
-    # each pixel shifts by +/-1 as the leg extends or retracts.
-    _LEGS = {
-        "UL": [(0, 1), (1, 2)],
-        "UR": [(0, 7), (1, 6)],
-        "LL": [(7, 2), (8, 1)],
-        "LR": [(7, 6), (8, 7)],
-    }
-
-    _OFFSET_X = 3
-    _OFFSET_Y = 3
-    _GAIT_TOGGLE_FRAMES = 20
-
-    def update(self, leds: list, frame: int) -> None:
-        _clear(leds)
-
-        pulse = 0.85 + 0.15 * math.sin(frame * 0.05)
-        body_color = _scale(IVORY_WHITE, pulse)
-
-        for row, col in self._BODY:
-            _set(leds, col + self._OFFSET_X, row + self._OFFSET_Y, body_color)
-
-        # Two small dark eyes on the front of the body.
-        _set(leds, 3 + self._OFFSET_X, 2 + self._OFFSET_Y, BLACK)
-        _set(leds, 5 + self._OFFSET_X, 2 + self._OFFSET_Y, BLACK)
-
-        # Alternating diagonal gait: UL+LR extend while UR+LL retract, then
-        # swap, so opposite-corner legs move together like a real scuttle.
-        phase = (frame // self._GAIT_TOGGLE_FRAMES) % 2
-        if phase == 0:
-            shifts = {"UL": -1, "LR": 1, "UR": 1, "LL": -1}
-        else:
-            shifts = {"UL": 1, "LR": -1, "UR": -1, "LL": 1}
-
-        for corner, pixels in self._LEGS.items():
-            dy = shifts[corner]
-            for row, col in pixels:
-                _set(leds, col + self._OFFSET_X, row + dy + self._OFFSET_Y, body_color)
-
-
 class _FlowingDrips(Pattern):
     """Shared downward-stream motion for the green ooze."""
 

@@ -12,7 +12,6 @@ from patterns.creeping_moss import CreepingMoss
 from patterns.eclipse import BloodMoonEclipse
 from patterns.halloween import (
     BreathingFog,
-    CreepySpider,
     EvilEyes,
     FlowingSlime,
     HalloweenRingFade,
@@ -25,7 +24,6 @@ ALL_PATTERNS = [
     BreathingFog,
     FlowingSlime,
     PacManGhost,
-    CreepySpider,
     BloodMoonEclipse,
     CreepingMoss,
     FallingSand,

@@ -35,7 +35,7 @@
 // === Pattern Cycling ===
 #define PATTERN_DURATION_MS  90000  // 90 seconds per pattern
 #define TRANSITION_MS        3000   // 3 second fade transitions
-#define NUM_PATTERNS         5
+#define NUM_PATTERNS         6
 
 CRGB leds[NUM_LEDS];
 uint32_t frame = 0;
@@ -698,8 +698,81 @@ void renderHalloweenFlow(const CRGB &background, const CRGB &stream,
 }
 
 void patternFlowingSlime() {
-  renderHalloweenFlow(CRGB(0, 2, 0), CRGB(55, 235, 8),
-                      CRGB(105, 255, 20), CRGB(45, 175, 5));
+  renderHalloweenFlow(CRGB(2, 0, 0), CRGB(235, 10, 8),
+                      CRGB(255, 50, 20), CRGB(175, 5, 5));
+}
+
+// ============================================================
+// Halloween Pattern: Pac-Man Ghost (White)
+// Classic arcade ghost silhouette recolored ivory. Rounded dome, a
+// feathered 3-lobe sine-wave hem, constant-speed bob, and eyes that
+// drift left/right at twice the bob's speed.
+// ============================================================
+static inline CRGB ghostScale(const CRGB &color, float amount) {
+  CRGB c = color;
+  c.nscale8_video((uint8_t)constrain(amount * 255.0f, 0.0f, 255.0f));
+  return c;
+}
+
+void patternPacManGhost() {
+  fill_solid(leds, NUM_LEDS, CRGB::Black);
+
+  const float domeRadius = 4.0f;
+  const float footCenter = 12.5f;
+  const float footAmplitude = 1.3f;
+  const uint8_t footPeriods = 3;
+  const uint16_t bobToggleFrames = 90;  // constant bob cadence; eyes move at 2x this rate
+
+  float pulse = 0.85f + 0.15f * ((sinf(frame * 0.06f) + 1.0f) / 2.0f);
+  CRGB body = ghostScale(CRGB(255, 244, 205), pulse);
+  uint8_t bob = (frame / bobToggleFrames) % 2;
+  uint8_t eyeDx = (frame / (bobToggleFrames / 2)) % 2;
+
+  // Gently sway the wave's phase so the feet sway side to side.
+  float phaseShift = sinf(frame * 0.05f) * 1.2f;
+  float angularFreq = 2.0f * PI * footPeriods / 14.0f;
+
+  for (uint8_t i = 0; i < 14; i++) {
+    uint8_t x = i + 1;
+
+    // Smooth circular corner: how far this column is inset from the top,
+    // rounded to a hard-edged row (no feathering on the dome).
+    float edgeDist = min((float)(x - 1), (float)(14 - x));
+    edgeDist = constrain(edgeDist, 0.0f, domeRadius);
+    float topF = domeRadius - sqrtf(max(0.0f, domeRadius * domeRadius -
+                                             (domeRadius - edgeDist) * (domeRadius - edgeDist)));
+    int16_t fullTop = (int16_t)roundf(topF) + bob;
+
+    float wave = sinf((i + phaseShift) * angularFreq + PI / 2.0f);
+    float bottomF = footCenter + wave * footAmplitude;
+
+    int16_t fullBottom = (int16_t)floorf(bottomF) + bob;
+    float fracBottom = bottomF - floorf(bottomF);
+
+    for (int16_t y = fullTop; y <= fullBottom; y++) {
+      if (y >= 0 && y < HEIGHT) leds[xyToIndex(x, y)] = body;
+    }
+
+    // Feather only the hem's final row by its fractional coverage.
+    if (fracBottom > 0.02f && fullBottom + 1 >= 0 && fullBottom + 1 < HEIGHT) {
+      leds[xyToIndex(x, fullBottom + 1)] = ghostScale(body, fracBottom);
+    }
+  }
+
+  // Eyes are dark cutouts with a small cyan dot that drifts left/right at
+  // twice the bob's speed (vertical position still follows the bob).
+  static const uint8_t eyeXs[] = {4, 10};
+  for (uint8_t e = 0; e < 2; e++) {
+    uint8_t ex = eyeXs[e];
+    for (uint8_t dy = 0; dy < 3; dy++) {
+      for (uint8_t dx = 0; dx < 2; dx++) {
+        uint8_t y = 5 + dy + bob;
+        if (y < HEIGHT) leds[xyToIndex(ex + dx, y)] = CRGB::Black;
+      }
+    }
+    uint8_t py = 6 + bob;
+    if (py < HEIGHT) leds[xyToIndex(ex + eyeDx, py)] = CRGB(60, 220, 255);
+  }
 }
 
 // ============================================================
@@ -885,6 +958,7 @@ PatternFunc patterns[] = {
   patternBreathingFog,
   patternFlowingSlime,
   patternBloodMoonEclipse,
+  patternPacManGhost,
 };
 
 void resetPatternState() {
@@ -898,6 +972,7 @@ void resetPatternState() {
     case 2: breathingFogInit(); break;
     case 3: halloweenFlowInit(); break;
     case 4: break;  // Eclipse is derived entirely from frame; no state to reset.
+    case 5: break;  // Ghost is derived entirely from frame; no state to reset.
   }
 }
 
@@ -934,7 +1009,7 @@ void setup() {
   transitionStart = millis();
   fadingIn = true;
   transitioning = false;
-  Serial.println("DiffusePanel Halloween Ready - 5 patterns (90s, 3s fades)");
+  Serial.println("DiffusePanel Halloween Ready - 6 patterns (90s, 3s fades)");
 }
 
 void loop() {
