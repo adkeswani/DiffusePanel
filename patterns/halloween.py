@@ -192,11 +192,12 @@ class PacManGhost(Pattern):
     # Per-column (x = 1..14) top row of the dome, rounding the corners.
     _DOME_TOP = {1: 4, 2: 3, 3: 2, 4: 1, 5: 0, 6: 0, 7: 0, 8: 0,
                  9: 0, 10: 0, 11: 1, 12: 2, 13: 3, 14: 4}
-    # Base foot profile (x = 1..14): three pointed, triangular feet
+    # Base foot profile (x = 1..14): three low, gentle triangular feet
     # separated by single-column notches, matching the ghost's wavy hem.
     # This base shape is shifted each frame to animate the feet.
-    _FOOT_BASE = [12, 14, 14, 12, 11, 12, 14, 14, 12, 11, 12, 14, 14, 12]
+    _FOOT_BASE = [12, 13, 13, 12, 12, 12, 13, 13, 12, 12, 12, 13, 13, 12]
     _FOOT_TOGGLE_FRAMES = 8  # classic two-frame arcade "swish" cadence
+    _PUPIL_TOGGLE_FRAMES = 20  # slow blink-like dot shift
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
@@ -215,11 +216,13 @@ class PacManGhost(Pattern):
             for y in range(top, bottom + 1):
                 _set(leds, x, y, body)
 
-        # Eyes are simply dark, unlit cutouts against the white body.
+        # Eyes are dark cutouts with a small blue dot that drifts slightly.
+        pupil_dy = 2 if (frame // self._PUPIL_TOGGLE_FRAMES) % 2 else 0
         for ex in (4, 10):
             for dy in range(3):
                 for dx in range(2):
                     _set(leds, ex + dx, 5 + dy, BLACK)
+            _set(leds, ex, 5 + pupil_dy, (40, 90, 255))
 
 
 class _FlowingDrips(Pattern):
