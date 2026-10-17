@@ -788,10 +788,10 @@ static int8_t evilEyesPupilDx = 0;
 static uint32_t evilEyesNextLookFrame = 0;
 
 void evilEyesInit() {
-  // No blue, so these read as green rather than cyan on real LEDs.
+  // Pure green only (no red, no blue) per user request.
   static const CRGB greens[] = {
-    CRGB(40, 200, 0), CRGB(60, 220, 0),
-    CRGB(30, 180, 0), CRGB(70, 210, 0)
+    CRGB(0, 180, 0), CRGB(0, 200, 0),
+    CRGB(0, 220, 0), CRGB(0, 255, 0)
   };
   evilEyeColor = greens[random8(0, 4)];
   evilEyesPupilDx = 0;

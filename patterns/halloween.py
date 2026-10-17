@@ -398,13 +398,12 @@ class EvilEyes(Pattern):
 
     def __init__(self):
         super().__init__()
-        # Pick one venomous green eye color per activation (no blue, so it
-        # reads as green rather than cyan on real LEDs).
+        # Pure green only (no red, no blue) per user request.
         self.eye_color = random.choice((
-            (40, 200, 0),
-            (60, 220, 0),
-            (30, 180, 0),
-            (70, 210, 0),
+            (0, 180, 0),
+            (0, 200, 0),
+            (0, 220, 0),
+            (0, 255, 0),
         ))
         self._pupil_dx = 0
         self._next_look_frame = random.randint(self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX)
