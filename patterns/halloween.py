@@ -420,9 +420,14 @@ class EvilEyes(Pattern):
 
         # A single-pixel pupil drifts left/right across the widest row,
         # holding each look direction for a random stretch before randomly
-        # picking the next one (timing and direction both vary).
+        # picking the next one. From an extreme it can only move back toward
+        # center or hold, so it always passes through center rather than
+        # jumping straight from one side to the other.
         if frame >= self._next_look_frame:
-            self._pupil_dx = random.choice((-1, 0, 1))
+            if self._pupil_dx == 0:
+                self._pupil_dx = random.choice((-1, 0, 1))
+            else:
+                self._pupil_dx = random.choice((0, self._pupil_dx))
             self._next_look_frame = frame + random.randint(
                 self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX
             )
