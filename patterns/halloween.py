@@ -201,17 +201,14 @@ class PacManGhost(Pattern):
     _FOOT_PERIODS = 3
     _PUPIL_TOGGLE_FRAMES = 40  # slow left/right dot shift
     _EDGE_GLOW = 0.18  # faint halo feathering the straight side edges
-    _BOB_SPEED = 0.018  # slow vertical float
+    _BOB_TOGGLE_FRAMES = 90  # slow down/neutral bob cadence
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
         pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
         body = _scale(IVORY_WHITE, pulse)
         glow = _scale(body, self._EDGE_GLOW)
-        bob = int(round(math.sin(frame * self._BOB_SPEED)))
-        # The silhouette already fills rows 0-15 at rest, so only bob
-        # downward (never negative) to avoid clipping off the panel's top.
-        bob = max(0, bob)
+        bob = (frame // self._BOB_TOGGLE_FRAMES) % 2
 
         # Gently sway the wave's phase so the feet sway side to side, rather
         # than the previous hard two-frame swish. This stays independent of
