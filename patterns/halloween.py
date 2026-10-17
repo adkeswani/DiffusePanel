@@ -16,6 +16,7 @@ PURPLE = (150, 0, 255)
 BONE = (205, 220, 205)
 GHOST_WHITE = (175, 210, 220)
 SLIME_GREEN = (55, 235, 8)
+IVORY_WHITE = (255, 244, 205)
 
 
 def _clear(leds: list, color: tuple[int, int, int] = BLACK) -> None:
@@ -180,49 +181,82 @@ class BedsheetGhost(Pattern):
 
 
 class PacManGhost(Pattern):
-    """A classic arcade ghost silhouette, recolored stark white.
+    """A classic arcade ghost silhouette, recolored an off-white ivory.
 
-    Uses the familiar rounded-dome / straight-sided / three-lobed-foot shape
-    with a pair of simple dark eye cutouts, scaled to the panel's native
-    resolution.
+    Uses the familiar rounded-dome / straight-sided / three-lobed-foot shape,
+    with every curved edge (dome and hem) anti-aliased via fractional
+    brightness so the silhouette reads smoothly instead of stair-stepping.
     """
 
     name = "Pac-Man Ghost (White)"
 
-    # Per-column (x = 1..14) top row of the dome, rounding the corners.
-    _DOME_TOP = {1: 4, 2: 3, 3: 2, 4: 1, 5: 0, 6: 0, 7: 0, 8: 0,
-                 9: 0, 10: 0, 11: 1, 12: 2, 13: 3, 14: 4}
-    # Base foot profile (x = 1..14): three low, gentle triangular feet
-    # separated by single-column notches, matching the ghost's wavy hem.
-    # This base shape is shifted each frame to animate the feet.
-    _FOOT_BASE = [12, 13, 13, 12, 12, 12, 13, 13, 12, 12, 12, 13, 13, 12]
-    _FOOT_TOGGLE_FRAMES = 8  # classic two-frame arcade "swish" cadence
-    _PUPIL_TOGGLE_FRAMES = 20  # slow blink-like dot shift
+    # Corner radius used to round the dome into a smooth quarter-circle
+    # instead of a hard-edged staircase.
+    _DOME_RADIUS = 4.0
+    # The wavy hem is a continuous, feathered sine wave (three gentle lobes
+    # across the 14-column body) rather than a hard-edged lookup table, so
+    # the "feet" anti-alias smoothly instead of stair-stepping.
+    _FOOT_CENTER = 12.5
+    _FOOT_AMPLITUDE = 1.3
+    _FOOT_PERIODS = 3
+    _PUPIL_TOGGLE_FRAMES = 20  # slow left/right dot shift
+    _EDGE_GLOW = 0.18  # faint halo feathering the straight side edges
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
         pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
-        body = _scale((255, 255, 255), pulse)
+        body = _scale(IVORY_WHITE, pulse)
+        glow = _scale(body, self._EDGE_GLOW)
 
-        # The hem alternates between two shifted copies of the foot profile,
-        # swishing the legs back and forth like the arcade sprite's walk cycle.
-        swishing = (frame // self._FOOT_TOGGLE_FRAMES) % 2 == 1
-        shift = 2 if swishing else 0
-        foot_count = len(self._FOOT_BASE)
+        # Gently sway the wave's phase so the feet sway side to side, rather
+        # than the previous hard two-frame swish.
+        phase_shift = math.sin(frame * 0.05) * 1.2
+        angular_freq = 2 * math.pi * self._FOOT_PERIODS / 14
+        r = self._DOME_RADIUS
 
         for i, x in enumerate(range(1, 15)):
-            top = self._DOME_TOP[x]
-            bottom = self._FOOT_BASE[(i + shift) % foot_count]
-            for y in range(top, bottom + 1):
+            # Smooth circular corner: how far this column is inset from the
+            # top, as a continuous (fractional) row value.
+            edge_dist = min(x - 1, 14 - x)
+            edge_dist = max(0.0, min(r, edge_dist))
+            top_f = r - math.sqrt(max(0.0, r * r - (r - edge_dist) ** 2))
+
+            wave = math.sin((i + phase_shift) * angular_freq + math.pi / 2)
+            bottom_f = self._FOOT_CENTER + wave * self._FOOT_AMPLITUDE
+
+            floor_top = int(math.floor(top_f))
+            frac_top = top_f - floor_top
+            full_top = floor_top + 1 if frac_top > 0.02 else floor_top
+
+            full_bottom = int(math.floor(bottom_f))
+            frac_bottom = bottom_f - full_bottom
+
+            for y in range(full_top, full_bottom + 1):
                 _set(leds, x, y, body)
 
-        # Eyes are dark cutouts with a small blue dot that drifts slightly.
-        pupil_dy = 2 if (frame // self._PUPIL_TOGGLE_FRAMES) % 2 else 0
+            # Feather the top and bottom boundary rows by their fractional
+            # coverage for smooth, anti-aliased curves instead of hard cuts.
+            if frac_top > 0.02:
+                _set(leds, x, floor_top, _scale(body, 1.0 - frac_top))
+            if frac_bottom > 0.02:
+                _set(leds, x, full_bottom + 1, _scale(body, frac_bottom))
+
+            # Faint halo just outside the straight sides, feathering the
+            # otherwise hard vertical outline.
+            if x == 1:
+                for y in range(full_top, full_bottom + 1):
+                    _set(leds, 0, y, glow)
+            if x == 14:
+                for y in range(full_top, full_bottom + 1):
+                    _set(leds, 15, y, glow)
+
+        # Eyes are dark cutouts with a small blue dot that drifts left/right.
+        pupil_dx = 1 if (frame // self._PUPIL_TOGGLE_FRAMES) % 2 else 0
         for ex in (4, 10):
             for dy in range(3):
                 for dx in range(2):
                     _set(leds, ex + dx, 5 + dy, BLACK)
-            _set(leds, ex, 5 + pupil_dy, (40, 90, 255))
+            _set(leds, ex + pupil_dx, 6, (40, 90, 255))
 
 
 class _FlowingDrips(Pattern):
