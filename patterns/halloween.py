@@ -377,18 +377,15 @@ class LaughingPumpkin(Pattern):
 
 class EvilEyes(Pattern):
     """A pair of slanted, glowing eyes that glance left/right as a whole,
-    with the pupil adding its own extra drift inside the shifted eye."""
+    while the pupil drifts the opposite direction inside the shifted eye."""
 
     name = "Evil Eyes"
 
-    # The whole eye holds a look direction for a random stretch of frames
-    # before randomly picking a new one, so the timing and direction vary.
-    _EYE_HOLD_MIN = 70
-    _EYE_HOLD_MAX = 110
-    # The pupil drifts on its own, faster cycle layered on top of the eye's
-    # shift, like a bit of extra parallax inside the socket.
-    _PUPIL_HOLD_MIN = 20
-    _PUPIL_HOLD_MAX = 45
+    # The whole eye (and, oppositely, the pupil) holds a look direction for
+    # a random stretch of frames before randomly picking a new one, so the
+    # timing and direction both vary.
+    _LOOK_HOLD_MIN = 70
+    _LOOK_HOLD_MAX = 110
     # Blinking: a quick eyelid-closed slit, periodically.
     _BLINK_PERIOD = 150
     _BLINK_FRAMES = 6
@@ -398,7 +395,7 @@ class EvilEyes(Pattern):
                        (1, 5), (2, 5), (3, 6), (4, 6), (5, 7), (6, 7),
                        (2, 6), (3, 7), (4, 7))
     # Base position (in the eye's own local coordinates) of the darker pupil
-    # pixel, before the eye-shift and pupil-drift offsets are added.
+    # pixel, before the eye-shift and opposing pupil offset are added.
     _PUPIL_POS = (4, 6)
 
     def __init__(self):
@@ -411,9 +408,7 @@ class EvilEyes(Pattern):
             (0, 255, 0),
         ))
         self._eye_dx = 0
-        self._next_eye_frame = random.randint(self._EYE_HOLD_MIN, self._EYE_HOLD_MAX)
-        self._pupil_dx = 0
-        self._next_pupil_frame = random.randint(self._PUPIL_HOLD_MIN, self._PUPIL_HOLD_MAX)
+        self._next_look_frame = random.randint(self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX)
 
     def update(self, leds: list, frame: int) -> None:
         _clear(leds)
@@ -431,21 +426,13 @@ class EvilEyes(Pattern):
         # picking the next one. From an extreme it can only move back toward
         # center or hold, so it always passes through center rather than
         # jumping straight from one side to the other.
-        if frame >= self._next_eye_frame:
+        if frame >= self._next_look_frame:
             if self._eye_dx == 0:
                 self._eye_dx = random.choice((-1, 0, 1))
             else:
                 self._eye_dx = random.choice((0, self._eye_dx))
-            self._next_eye_frame = frame + random.randint(
-                self._EYE_HOLD_MIN, self._EYE_HOLD_MAX
-            )
-        if frame >= self._next_pupil_frame:
-            if self._pupil_dx == 0:
-                self._pupil_dx = random.choice((-1, 0, 1))
-            else:
-                self._pupil_dx = random.choice((0, self._pupil_dx))
-            self._next_pupil_frame = frame + random.randint(
-                self._PUPIL_HOLD_MIN, self._PUPIL_HOLD_MAX
+            self._next_look_frame = frame + random.randint(
+                self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX
             )
 
         # Both eyes shift the same screen direction together (not mirrored),
@@ -455,10 +442,10 @@ class EvilEyes(Pattern):
             _set(leds, x + dx, y, eye_color)
             _set(leds, 15 - x + dx, y, eye_color)
 
-        # The pupil rides along with the eye shift, plus its own extra
-        # drift, so it moves a bit more than the socket around it.
+        # The pupil moves on the same slow cycle but in the opposite
+        # direction, so it drifts counter to the socket around it.
         px, py = self._PUPIL_POS
-        pupil_dx = dx + self._pupil_dx
+        pupil_dx = -dx
         _set(leds, px + pupil_dx, py, pupil_color)
         _set(leds, 15 - px + pupil_dx, py, pupil_color)
 

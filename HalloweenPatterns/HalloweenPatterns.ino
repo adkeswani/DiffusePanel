@@ -790,9 +790,7 @@ void patternPacManGhost() {
 // ============================================================
 static CRGB evilEyeColor;
 static int8_t evilEyesEyeDx = 0;
-static uint32_t evilEyesNextEyeFrame = 0;
-static int8_t evilEyesPupilDx = 0;
-static uint32_t evilEyesNextPupilFrame = 0;
+static uint32_t evilEyesNextLookFrame = 0;
 
 void evilEyesInit() {
   // Pure green only (no red, no blue) per user request.
@@ -802,9 +800,7 @@ void evilEyesInit() {
   };
   evilEyeColor = greens[random8(0, 4)];
   evilEyesEyeDx = 0;
-  evilEyesNextEyeFrame = random(70, 111);
-  evilEyesPupilDx = 0;
-  evilEyesNextPupilFrame = random(20, 46);
+  evilEyesNextLookFrame = random(70, 111);
 }
 
 void patternEvilEyes() {
@@ -823,7 +819,7 @@ void patternEvilEyes() {
     {2,6}, {3,7}, {4,7}
   };
   // Base position (in the eye's own local coordinates) of the darker pupil
-  // pixel, before the eye-shift and pupil-drift offsets are added.
+  // pixel, before the eye-shift and opposing pupil offset are added.
   const uint8_t pupilLocalX = 4;
   const uint8_t pupilLocalY = 6;
 
@@ -842,23 +838,13 @@ void patternEvilEyes() {
   // picking the next one. From an extreme it can only move back toward
   // center or hold, so it always passes through center rather than
   // jumping straight from one side to the other.
-  if (frame >= evilEyesNextEyeFrame) {
+  if (frame >= evilEyesNextLookFrame) {
     if (evilEyesEyeDx == 0) {
       evilEyesEyeDx = (int8_t)random(-1, 2);  // -1, 0, or 1
     } else {
       evilEyesEyeDx = (random8() < 128) ? 0 : evilEyesEyeDx;
     }
-    evilEyesNextEyeFrame = frame + random(70, 111);
-  }
-  // The pupil drifts on its own, faster cycle layered on top of the eye's
-  // shift, like a bit of extra parallax inside the socket.
-  if (frame >= evilEyesNextPupilFrame) {
-    if (evilEyesPupilDx == 0) {
-      evilEyesPupilDx = (int8_t)random(-1, 2);  // -1, 0, or 1
-    } else {
-      evilEyesPupilDx = (random8() < 128) ? 0 : evilEyesPupilDx;
-    }
-    evilEyesNextPupilFrame = frame + random(20, 46);
+    evilEyesNextLookFrame = frame + random(70, 111);
   }
 
   // Both eyes shift the same screen direction together (not mirrored), so
@@ -874,9 +860,9 @@ void patternEvilEyes() {
     if (rightX >= 0 && rightX < WIDTH) leds[xyToIndex((uint8_t)rightX, y)] = eye;
   }
 
-  // The pupil rides along with the eye shift, plus its own extra drift, so
-  // it moves a bit more than the socket around it.
-  int16_t pupilDx = (int16_t)dx + evilEyesPupilDx;
+  // The pupil moves on the same slow cycle but in the opposite direction,
+  // so it drifts counter to the socket around it.
+  int16_t pupilDx = -(int16_t)dx;
   int16_t leftPupilX = (int16_t)pupilLocalX + pupilDx;
   int16_t rightPupilX = (int16_t)(15 - pupilLocalX) + pupilDx;
   if (leftPupilX >= 0 && leftPupilX < WIDTH) leds[xyToIndex((uint8_t)leftPupilX, pupilLocalY)] = pupil;
