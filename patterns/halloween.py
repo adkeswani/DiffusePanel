@@ -376,11 +376,11 @@ class LaughingPumpkin(Pattern):
 
 
 class EvilEyes(Pattern):
-    """A pair of slanted, glowing eyes with a drifting pupil and a blink."""
+    """A pair of slanted, glowing eyes that glance left/right as a whole."""
 
     name = "Evil Eyes"
 
-    # The pupil holds a look direction for a random stretch of frames before
+    # The eyes hold a look direction for a random stretch of frames before
     # randomly picking a new one, so the timing and direction both vary.
     _LOOK_HOLD_MIN = 70
     _LOOK_HOLD_MAX = 110
@@ -392,6 +392,11 @@ class EvilEyes(Pattern):
     _LEFT_EYE_CORE = ((0, 4), (1, 4), (2, 4), (3, 5), (4, 5), (5, 6), (6, 6),
                        (1, 5), (2, 5), (3, 6), (4, 6), (5, 7), (6, 7),
                        (2, 6), (3, 7), (4, 7))
+    # Fixed position (in the eye's own local coordinates) of the darker
+    # pupil pixel. It stays put relative to the eye shape -- the whole eye
+    # glances left/right as a rigid unit instead of the pupil drifting
+    # around inside a static eye, a classic trick for low-resolution faces.
+    _PUPIL_POS = (4, 6)
 
     def __init__(self):
         super().__init__()
@@ -402,7 +407,7 @@ class EvilEyes(Pattern):
             (0, 220, 0),
             (0, 255, 0),
         ))
-        self._pupil_dx = 0
+        self._eye_dx = 0
         self._next_look_frame = random.randint(self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX)
 
     def update(self, leds: list, frame: int) -> None:
@@ -417,27 +422,26 @@ class EvilEyes(Pattern):
                 _set(leds, 15 - x, y, eye_color)
             return
 
-        for x, y in self._LEFT_EYE_CORE:
-            _set(leds, x, y, eye_color)
-            _set(leds, 15 - x, y, eye_color)
-        # A single-pixel pupil drifts left/right across the widest row,
-        # holding each look direction for a random stretch before randomly
+        # Holding each look direction for a random stretch before randomly
         # picking the next one. From an extreme it can only move back toward
         # center or hold, so it always passes through center rather than
         # jumping straight from one side to the other.
         if frame >= self._next_look_frame:
-            if self._pupil_dx == 0:
-                self._pupil_dx = random.choice((-1, 0, 1))
+            if self._eye_dx == 0:
+                self._eye_dx = random.choice((-1, 0, 1))
             else:
-                self._pupil_dx = random.choice((0, self._pupil_dx))
+                self._eye_dx = random.choice((0, self._eye_dx))
             self._next_look_frame = frame + random.randint(
                 self._LOOK_HOLD_MIN, self._LOOK_HOLD_MAX
             )
-        pupil_dx = self._pupil_dx
-        # Both pupils shift the same screen direction together (not mirrored),
-        # so the eyes look the same way instead of converging/diverging.
-        _set(leds, 4 + pupil_dx, 6, pupil_color)
-        _set(leds, 11 + pupil_dx, 6, pupil_color)
+        # Both eyes shift the same screen direction together (not mirrored),
+        # so the eyes look the same way instead of converging/diverging. The
+        # pupil rides along at its fixed spot inside the shifted shape.
+        dx = self._eye_dx
+        for x, y in self._LEFT_EYE_CORE:
+            color = pupil_color if (x, y) == self._PUPIL_POS else eye_color
+            _set(leds, x + dx, y, color)
+            _set(leds, 15 - x + dx, y, color)
 
 
 class LaughingSkullCloseup(Pattern):
