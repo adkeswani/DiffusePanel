@@ -808,15 +808,11 @@ void patternEvilEyes() {
   CRGB pupil = CRGB(0, 10, 0);
 
   // Inner corners point downward, producing an unmistakably angry slant.
+  // The innermost column's top pixel is left off to sharpen the slant.
   static const uint8_t leftEyeCore[][2] = {
-    {0,4}, {1,4}, {2,4}, {3,5}, {4,5}, {5,6}, {6,6},
+    {0,4}, {1,4}, {2,4}, {3,5}, {4,5}, {5,6},
     {1,5}, {2,5}, {3,6}, {4,6}, {5,7}, {6,7},
     {2,6}, {3,7}, {4,7}
-  };
-  // One soft quarter-brightness pixel continuing the inner (nose-side)
-  // column one step further, tapering the sharp inner tip.
-  static const uint8_t leftEyeFeather[][3] = {
-    {6,8,64}
   };
 
   if (frame % blinkPeriod < blinkFrames) {
@@ -835,14 +831,6 @@ void patternEvilEyes() {
     uint8_t y = leftEyeCore[i][1];
     leds[xyToIndex(x, y)] = eye;
     leds[xyToIndex(15 - x, y)] = eye;
-  }
-  for (uint8_t i = 0; i < sizeof(leftEyeFeather) / sizeof(leftEyeFeather[0]); i++) {
-    uint8_t x = leftEyeFeather[i][0];
-    uint8_t y = leftEyeFeather[i][1];
-    CRGB feathered = eye;
-    feathered.nscale8_video(leftEyeFeather[i][2]);
-    leds[xyToIndex(x, y)] = feathered;
-    leds[xyToIndex(15 - x, y)] = feathered;
   }
   // A single-pixel pupil drifts left/right across the widest row, holding
   // each look direction for a random stretch before randomly picking the
