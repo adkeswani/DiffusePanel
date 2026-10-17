@@ -35,7 +35,7 @@ LED_RADIUS = LED_DIAMETER // 2
 LED_GAP = 20            # Pixels for the 5mm gap between LEDs
 CELL_PITCH = LED_DIAMETER + LED_GAP  # Center-to-center distance
 PANEL_PADDING = 30      # Padding around the panel
-LED_ALPHA = 153         # ~60% opacity (0.6 * 255)
+LED_ALPHA = 230         # ~90% opacity for a brighter diffuser preview
 
 # Calculate window dimensions
 PANEL_WIDTH = (WIDTH - 1) * CELL_PITCH + LED_DIAMETER

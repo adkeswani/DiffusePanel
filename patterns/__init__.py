@@ -9,8 +9,20 @@ from patterns.falling_leaves import FallingLeaves
 from patterns.dreamy_aurora import DreamyAurora
 from patterns.falling_sand import FallingSand
 from patterns.creeping_moss import CreepingMoss
+from patterns.eclipse import BloodMoonEclipse
+from patterns.halloween import (
+    BreathingFog,
+    EvilEyes,
+    FlowingSlime,
+    HalloweenRingFade,
+)
 
 ALL_PATTERNS = [
+    HalloweenRingFade,
+    EvilEyes,
+    BreathingFog,
+    FlowingSlime,
+    BloodMoonEclipse,
     CreepingMoss,
     FallingSand,
     DreamyAurora,

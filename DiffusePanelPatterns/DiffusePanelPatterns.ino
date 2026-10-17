@@ -599,9 +599,9 @@ void patternStarfield() {
 typedef void (*PatternFunc)();
 
 PatternFunc patterns[] = {
-  patternFeatheredGrass,
   patternBokeh,
   patternRipple,
+  patternFeatheredGrass,
   patternStarfield,
   patternRingFade,
 };
@@ -612,9 +612,9 @@ void resetPatternState() {
   hueOffset = random8();
   hueDirection = (random8() < 128) ? 1 : -1;
   switch (currentPattern) {
-    case 0: featheredGrassInit(); break;
-    case 1: bokehInit(); break;
-    case 2: rippleInit(); break;
+    case 0: bokehInit(); break;
+    case 1: rippleInit(); break;
+    case 2: featheredGrassInit(); break;
     case 3: starfieldInit(); break;
     case 4: ringFadeInit(); break;
   }
