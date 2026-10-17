@@ -33,7 +33,7 @@
 #define NUM_LEDS    (WIDTH * HEIGHT)
 
 // === Pattern Cycling ===
-#define PATTERN_DURATION_MS  20000  // 20 seconds per pattern (temporary USB test setting)
+#define PATTERN_DURATION_MS  90000  // 90 seconds per pattern
 #define TRANSITION_MS        1000   // 1 second fade transitions
 #define NUM_PATTERNS         6
 
