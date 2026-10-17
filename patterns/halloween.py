@@ -201,14 +201,12 @@ class PacManGhost(Pattern):
     _FOOT_PERIODS = 3
     _PUPIL_TOGGLE_FRAMES = 40  # fastest left/right dot cadence (min frames)
     _EDGE_GLOW = 0.18  # faint halo feathering the straight side edges
-    _BOB_TOGGLE_FRAMES = 90  # fastest bob cadence (min frames)
+    _BOB_TOGGLE_FRAMES = 90  # constant bob cadence
 
     def __init__(self):
         super().__init__()
-        # Randomize each activation's pace, using the base cadences above as
-        # the fastest (max speed) the bob/eyes are ever allowed to move.
-        self.bob_toggle_frames = random.randint(
-            self._BOB_TOGGLE_FRAMES, self._BOB_TOGGLE_FRAMES * 3)
+        # Randomize only the eye-drift pace per activation; the bob stays at
+        # a constant cadence.
         self.pupil_toggle_frames = random.randint(
             self._PUPIL_TOGGLE_FRAMES, self._PUPIL_TOGGLE_FRAMES * 3)
 
@@ -217,28 +215,25 @@ class PacManGhost(Pattern):
         pulse = 0.85 + 0.15 * ((math.sin(frame * 0.06) + 1.0) / 2.0)
         body = _scale(IVORY_WHITE, pulse)
         glow = _scale(body, self._EDGE_GLOW)
-        bob = (frame // self.bob_toggle_frames) % 2
+        bob = (frame // self._BOB_TOGGLE_FRAMES) % 2
 
         # Gently sway the wave's phase so the feet sway side to side, rather
         # than the previous hard two-frame swish. This stays independent of
-        # the (slower) vertical bob above.
+        # the vertical bob above.
         phase_shift = math.sin(frame * 0.05) * 1.2
         angular_freq = 2 * math.pi * self._FOOT_PERIODS / 14
         r = self._DOME_RADIUS
 
         for i, x in enumerate(range(1, 15)):
             # Smooth circular corner: how far this column is inset from the
-            # top, as a continuous (fractional) row value.
+            # top, rounded to a hard-edged row (no feathering on the dome).
             edge_dist = min(x - 1, 14 - x)
             edge_dist = max(0.0, min(r, edge_dist))
             top_f = r - math.sqrt(max(0.0, r * r - (r - edge_dist) ** 2))
+            full_top = int(round(top_f)) + bob
 
             wave = math.sin((i + phase_shift) * angular_freq + math.pi / 2)
             bottom_f = self._FOOT_CENTER + wave * self._FOOT_AMPLITUDE
-
-            floor_top = int(math.floor(top_f)) + bob
-            frac_top = top_f - math.floor(top_f)
-            full_top = floor_top + 1 if frac_top > 0.02 else floor_top
 
             full_bottom = int(math.floor(bottom_f)) + bob
             frac_bottom = bottom_f - math.floor(bottom_f)
@@ -246,10 +241,8 @@ class PacManGhost(Pattern):
             for y in range(full_top, full_bottom + 1):
                 _set(leds, x, y, body)
 
-            # Feather the top and bottom boundary rows by their fractional
-            # coverage for smooth, anti-aliased curves instead of hard cuts.
-            if frac_top > 0.02:
-                _set(leds, x, floor_top, _scale(body, 1.0 - frac_top))
+            # Feather only the hem's final row by its fractional coverage,
+            # for a smooth, anti-aliased point instead of a hard pixel cutoff.
             if frac_bottom > 0.02:
                 _set(leds, x, full_bottom + 1, _scale(body, frac_bottom))
 
