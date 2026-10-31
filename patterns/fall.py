@@ -368,144 +368,57 @@ class TumblingLeaves(Pattern):
                 _set(leds, x, y, _scale(leaf.color, leaf.brightness()))
 
 
-class _CanopyPixel:
-    """A single canopy pixel's independent on/off flicker, like a leaf
-    catching and losing the light."""
+class FallMapleLeaf(Pattern):
+    """A solid, recognizable maple-leaf silhouette that gently pulses in
+    brightness while its color slowly bounces through the fall spectrum
+    (yellow -> orange -> red -> brown -> back).
 
-    def __init__(self):
-        self.phase = random.uniform(0, 2 * math.pi)
-        self.freq = random.uniform(0.02, 0.05)
-        self.min_brightness = random.uniform(0.15, 0.35)
-
-    def brightness(self, frame: int) -> float:
-        t = (math.sin(frame * self.freq + self.phase) + 1.0) / 2.0  # 0..1
-        return self.min_brightness + (1.0 - self.min_brightness) * t
-
-
-class FallTree(Pattern):
-    """A simple tree: a white trunk with white branches that fan out
-    widely and fork as they grow upward from partway down the trunk,
-    reaching all the way to the top of the display (and getting cut off
-    at the top/sides -- that's fine, it just reads as a big tree filling
-    the panel).
-
-    The branches themselves stay white (the tree's bare structure); fall-
-    colored "leaf" pixels cluster around them instead, each fading on and
-    off on its own cycle (like catching and losing the light), while the
-    whole tree's leaf color slowly bounces back and forth through the
-    fall spectrum together (yellow -> orange -> red -> brown -> back).
+    Deliberately a simple, hand-drawn, static shape rather than anything
+    organic/randomized -- a 16x16 panel just doesn't have the resolution
+    to read fine, irregular detail (branches, veins, crumbling edges)
+    well, but a bold, recognizable silhouette reads clearly.
     """
 
-    name = "Fall Tree"
+    name = "Maple Leaf"
 
-    _TRUNK_LEFT = 7
-    _TRUNK_RIGHT = 8
-    _TRUNK_TOP = 10
-    _TRUNK_BOTTOM = 15
-    _TRUNK_COLOR = (200, 200, 200)
+    # Leftmost/rightmost filled column per row (0=top, 15=bottom), hand-
+    # tuned to read as a maple leaf: a pointed tip, two wide "shoulder"
+    # lobes, a pinched waist, two lower lobes, and a short stem.
+    _ROWS = [
+        (7, 8),
+        (6, 9),
+        (6, 9),
+        (5, 10),
+        (3, 12),
+        (2, 13),
+        (4, 11),
+        (3, 12),
+        (3, 12),
+        (4, 11),
+        (5, 10),
+        (6, 9),
+        (6, 9),
+        (7, 8),
+        (7, 8),
+        (7, 8),
+    ]
 
-    # Branches start partway down the trunk (not just its very top), so
-    # the lowest branches read as growing out of the trunk itself.
-    _BRANCH_START_Y = 13
-
-    _MAX_BRANCH_PIXELS = 60
-    _MAX_LEAF_PIXELS = 360
+    _PULSE_FREQ = 0.015
 
     def __init__(self):
         super().__init__()
-        self._build_tree()
-
-    def _build_tree(self):
-        """Grow a wide, forking network of white branches up from partway
-        down the trunk via a fanned-out random walk, then scatter fall-
-        colored "leaf" pixels around the resulting branch structure."""
-        branch_coords: set[tuple[int, int]] = set()
-
-        # Several branches all start right at the trunk, but each is
-        # given its own outward "bias" (a target direction it keeps
-        # gently steering toward, on top of its own random wobble) so as
-        # a group they fan out wide as they climb, instead of all
-        # wandering off independently from a single point.
-        num_starts = 7
-        tips = []
-        for i in range(num_starts):
-            spread = (i / (num_starts - 1)) - 0.5  # -0.5 .. 0.5
-            bias = spread * 3.0
-            start_x = (self._TRUNK_LEFT + self._TRUNK_RIGHT) / 2.0 + bias * 0.3
-            start_y = self._BRANCH_START_Y + random.uniform(-1.0, 0.5)
-            tips.append((start_x, start_y, bias * 0.3, bias))
-
-        while tips and len(branch_coords) < self._MAX_BRANCH_PIXELS:
-            x, y, drift, bias = tips.pop()
-
-            # Walk this branch upward a short run before deciding whether
-            # to fork, stop, or keep going.
-            run_length = random.randint(2, 4)
-            for _ in range(run_length):
-                branch_coords.add((int(round(x)), int(round(y))))
-                y -= 1
-                # Random wobble, plus a gentle, persistent pull toward
-                # this branch's own outward bias direction.
-                drift += random.uniform(-0.5, 0.5) + bias * 0.12
-                drift = max(-2.2, min(2.2, drift))
-                x += drift
-                # Let branches run off the top/sides -- just stop growing
-                # that particular branch once it's well past the edge.
-                if y < -2 or x < -3 or x > WIDTH + 2:
-                    break
-            else:
-                if y < -2 or len(branch_coords) >= self._MAX_BRANCH_PIXELS:
-                    continue
-                if random.random() < 0.45:
-                    # Fork into two branches, inheriting diverging biases
-                    # so each half keeps fanning further apart.
-                    tips.append((x, y, drift + random.uniform(0.3, 0.8), bias + 0.6))
-                    tips.append((x, y, drift - random.uniform(0.3, 0.8), bias - 0.6))
-                else:
-                    tips.append((x, y, drift, bias))
-
-        self.branches = sorted(branch_coords)
-
-        # Scatter leaf pixels in the neighborhood of the branches, so the
-        # branch skeleton stays a clean white while the foliage reads as
-        # a separate, fall-colored layer around it. Leaves cluster densely
-        # right around each branch pixel, and more sparsely a bit further
-        # out, for a fuller foliage look around a thin branch structure.
-        leaf_coords: set[tuple[int, int]] = set()
-        near_offsets = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-        far_offsets = [
-            (dx, dy)
-            for dx in (-2, -1, 0, 1, 2)
-            for dy in (-2, -1, 0, 1, 2)
-            if (dx, dy) not in near_offsets and (dx, dy) != (0, 0)
-        ]
-        for bx, by in branch_coords:
-            if len(leaf_coords) >= self._MAX_LEAF_PIXELS:
-                break
-            for dx, dy in near_offsets:
-                if random.random() < 0.65:
-                    nx, ny = bx + dx, by + dy
-                    if (nx, ny) not in branch_coords:
-                        leaf_coords.add((nx, ny))
-            for dx, dy in far_offsets:
-                if random.random() < 0.18:
-                    nx, ny = bx + dx, by + dy
-                    if (nx, ny) not in branch_coords:
-                        leaf_coords.add((nx, ny))
-
-        self.leaves = [(x, y, _CanopyPixel()) for x, y in leaf_coords]
+        self._pixels = []
+        for y, (left, right) in enumerate(self._ROWS):
+            for x in range(left, right + 1):
+                self._pixels.append((x, y))
 
     def update(self, leds: list, frame: int) -> None:
         hue, sat, cap = get_fall_palette_color(frame)
-        leaf_color = hsv_to_rgb(hue, sat, cap)
+        pulse = (math.sin(frame * self._PULSE_FREQ) + 1.0) / 2.0  # 0..1
+        brightness = int(cap * (0.55 + 0.45 * pulse))
+        color = hsv_to_rgb(hue, sat, brightness)
 
         _clear(leds)
-        for x, y, pixel in self.leaves:
-            _set(leds, x, y, _scale(leaf_color, pixel.brightness(frame)))
+        for x, y in self._pixels:
+            _set(leds, x, y, color)
 
-        for x, y in self.branches:
-            _set(leds, x, y, self._TRUNK_COLOR)
-
-        for y in range(self._TRUNK_TOP, self._TRUNK_BOTTOM + 1):
-            _set(leds, self._TRUNK_LEFT, y, self._TRUNK_COLOR)
-            _set(leds, self._TRUNK_RIGHT, y, self._TRUNK_COLOR)
