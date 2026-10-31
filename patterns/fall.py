@@ -33,28 +33,34 @@ FALL_COLOR_STOPS = (YELLOW, ORANGE, RED, BROWN)
 # four colors, for patterns that want to crossfade smoothly through hue/sat
 # space rather than blending concrete RGB stops. The cap keeps muted colors
 # (especially brown) from being blown out to a bright orange at full value.
-_YELLOW_HSV = (42, 235, 255)
+_YELLOW_HSV = (32, 235, 255)
 _ORANGE_HSV = (20, 255, 255)
 _RED_HSV = (0, 230, 230)
 _BROWN_HSV = (14, 190, 125)
 
 FALL_PALETTE_HSV = (_YELLOW_HSV, _ORANGE_HSV, _RED_HSV, _BROWN_HSV)
 
+# The same four stops, but in "bounce"/ping-pong order: yellow -> orange ->
+# red -> brown -> red -> orange -> (loops back to yellow), instead of
+# snapping straight from brown back to yellow.
+FALL_PALETTE_HSV_BOUNCE = FALL_PALETTE_HSV + FALL_PALETTE_HSV[-2:0:-1]
+
 # How long to hold each color, and how long to crossfade to the next one.
 FALL_PALETTE_HOLD_FRAMES = 420   # ~7s at 60fps
 FALL_PALETTE_FADE_FRAMES = 180   # ~3s crossfade
+FALL_PALETTE_STEP_FRAMES = FALL_PALETTE_HOLD_FRAMES + FALL_PALETTE_FADE_FRAMES
 
 
 def get_fall_palette_color(frame: int) -> tuple[int, int, int]:
     """Return the current (hue, sat, cap) based on frame, slowly and
-    smoothly cycling through FALL_PALETTE_HSV in order, looping forever."""
-    stops = FALL_PALETTE_HSV
-    cycle_length = FALL_PALETTE_HOLD_FRAMES + FALL_PALETTE_FADE_FRAMES
-    total_cycle = cycle_length * len(stops)
+    smoothly bouncing back and forth through FALL_PALETTE_HSV_BOUNCE
+    (yellow -> orange -> red -> brown -> red -> orange -> loop)."""
+    stops = FALL_PALETTE_HSV_BOUNCE
+    total_cycle = FALL_PALETTE_STEP_FRAMES * len(stops)
     pos = frame % total_cycle
 
-    idx = pos // cycle_length
-    frame_in_slot = pos % cycle_length
+    idx = pos // FALL_PALETTE_STEP_FRAMES
+    frame_in_slot = pos % FALL_PALETTE_STEP_FRAMES
 
     cur_hue, cur_sat, cur_cap = stops[idx]
     nxt_hue, nxt_sat, nxt_cap = stops[(idx + 1) % len(stops)]
@@ -192,29 +198,6 @@ class _FallOrb:
         return t * t * (3.0 - 2.0 * t)
 
 
-class FallBokeh(Pattern):
-    """Bokeh pattern (soft glowing orbs), recolored with fall colors:
-    yellow, orange, red, and brown, smoothly crossfading through that
-    seasonal order."""
-
-    name = "Fall Bokeh"
-
-    def __init__(self):
-        super().__init__()
-        self.orbs = []
-        for i in range(NUM_LEDS):
-            orb = _FallOrb()
-            # Stagger initial sleep so they don't all start together.
-            orb.sleep_frames = random.randint(0, 180)
-            self.orbs.append(orb)
-
-    def update(self, leds: list, frame: int) -> None:
-        hue, sat, cap = get_fall_palette_color(frame)
-        for i in range(NUM_LEDS):
-            self.orbs[i].set_color(hue, sat, cap)
-            leds[i] = self.orbs[i].update()
-
-
 class _FallOrbIndependent(_FallOrb):
     """Like _FallOrb, but each orb independently picks its own random stop
     from the fall palette instead of following one shared, synced color."""
@@ -263,6 +246,11 @@ class FallRingWave(Pattern):
 
     def update(self, leds: list, frame: int) -> None:
         hue, sat, cap = get_fall_palette_color(frame)
+        # Sample the same (bouncing) palette one full step ahead so the
+        # wave highlight is always a clearly distinct fall color from the
+        # base ring (e.g. an orange wave chasing around a yellow ring),
+        # rather than just a brighter/less-saturated shade of the same hue.
+        wave_hue, wave_sat, wave_cap = get_fall_palette_color(frame + FALL_PALETTE_STEP_FRAMES)
         wave_angle = frame * self.speed
 
         for y in range(HEIGHT):
@@ -285,24 +273,25 @@ class FallRingWave(Pattern):
                         angle_diff = 2 * math.pi - angle_diff
 
                     if angle_diff < self.wave_width:
-                        # Inside the wave: brighter, slightly shifted color.
+                        # Inside the wave: brighter, and a distinctly
+                        # different fall color from the base ring.
                         t = 1.0 - (angle_diff / self.wave_width)
                         t = t * t * (3.0 - 2.0 * t)
 
                         brightness = int((120 + t * 100) * ring_fade)
-                        # Keep the same hue as the base ring -- a hue shift
-                        # here can drift yellow toward green.
-                        pixel_hue = hue
-                        pixel_sat = max(0, sat - int(t * 20))
+                        pixel_hue = int(hue + (wave_hue - hue) * t) % 256
+                        pixel_sat = int(sat + (wave_sat - sat) * t)
+                        pixel_cap = int(cap + (wave_cap - cap) * t)
                     else:
                         # Rest of the ring: always lit with the base color.
                         brightness = int(120 * ring_fade)
                         pixel_hue = hue
                         pixel_sat = sat
+                        pixel_cap = cap
 
                     # Clamp to this color's brightness cap so brown stays
                     # muted instead of blowing out to a bright orange.
-                    brightness = min(brightness, cap)
+                    brightness = min(brightness, pixel_cap)
                     leds[idx] = hsv_to_rgb(pixel_hue, pixel_sat, brightness)
                 else:
                     leds[idx] = (0, 0, 0)
@@ -379,102 +368,78 @@ class TumblingLeaves(Pattern):
                 _set(leds, x, y, _scale(leaf.color, leaf.brightness()))
 
 
-class AutumnLeaf(Pattern):
-    """A symmetrical leaf-vein skeleton that slowly shifts color through
-    the fall spectrum (yellow -> orange -> red -> brown), then crumbles
-    apart pixel by pixel as it darkens, before a fresh leaf grows back in
-    and the cycle repeats.
+class _CanopyPixel:
+    """A single canopy pixel's independent on/off flicker, like a leaf
+    catching and losing the light."""
 
-    Rather than a filled silhouette, this draws just the veins: a central
-    midrib (two columns wide, straddling the panel's center so it's
-    perfectly symmetric) with mirrored lateral veins branching off it,
-    angled toward the tip like a real leaf's venation -- short veins near
-    the tip, longer ones near the base.
+    def __init__(self):
+        self.phase = random.uniform(0, 2 * math.pi)
+        self.freq = random.uniform(0.02, 0.05)
+        self.min_brightness = random.uniform(0.15, 0.35)
+
+    def brightness(self, frame: int) -> float:
+        t = (math.sin(frame * self.freq + self.phase) + 1.0) / 2.0  # 0..1
+        return self.min_brightness + (1.0 - self.min_brightness) * t
+
+
+class FallTree(Pattern):
+    """A simple tree: a white trunk topped by a rough, irregularly-shaped
+    cluster of canopy pixels. Each canopy pixel fades on and off on its
+    own cycle (like leaves catching the light), while the whole canopy's
+    color slowly bounces back and forth through the fall spectrum
+    together (yellow -> orange -> red -> brown -> back).
     """
 
-    name = "Autumn Leaf"
+    name = "Fall Tree"
 
-    _MIDRIB_LEFT = 7       # left-of-center midrib column
-    _MIDRIB_RIGHT = 8      # mirror of _MIDRIB_LEFT (15 - 7 == 8)
-    _MIDRIB_TOP = 2        # row of the leaf tip
-    _MIDRIB_BOTTOM = 13    # row where the midrib meets the stem
-    _STEM_LEN = 3
+    _TRUNK_LEFT = 7
+    _TRUNK_RIGHT = 8
+    _TRUNK_TOP = 11
+    _TRUNK_BOTTOM = 15
+    _TRUNK_COLOR = (200, 200, 200)
 
-    # Rows along the midrib where a mirrored pair of lateral veins
-    # branches off, and how many steps (diagonally up-and-out) each pair
-    # reaches -- longer near the base, shorter near the tip. Spaced far
-    # enough apart that no two veins' pixels overlap, so each reads as a
-    # clean separate chevron rather than a crossed lattice.
-    _VEIN_ROWS = (4, 8, 12)
-    _VEIN_LENGTHS = (2, 3, 4)
-
-    _CYCLE_FRAMES = 1800        # ~30s at 60fps for one full life of a leaf
-    _CRUMBLE_START = 0.78       # fraction of the cycle where crumbling begins
+    _CANOPY_CX = 7.5
+    _CANOPY_CY = 7.0
+    _CANOPY_BASE_RADIUS = 5.3
+    _CANOPY_TOP_ROW = 0
+    _CANOPY_BOTTOM_ROW = 10  # overlaps slightly with the top of the trunk
 
     def __init__(self):
         super().__init__()
-        self._build_shape()
-        self._last_cycle_index = -1
-        self.crumble_thresholds = [0.0] * len(self.pixels)
+        # A handful of random sine harmonics (fixed per tree instance) so
+        # the canopy's edge is a rough, organic blob instead of a perfect
+        # circle -- same silhouette every frame, just irregular.
+        self._bumps = [
+            (random.uniform(0.6, 1.4), random.randint(2, 5), random.uniform(0, 2 * math.pi))
+            for _ in range(3)
+        ]
+        self._build_canopy()
 
-    def _build_shape(self):
-        """Precompute the leaf's vein pixel coordinates (all full
-        brightness, no antialiasing needed for thin lines), plus a short
-        stem below the base of the midrib."""
-        self.pixels: list[tuple[int, int, float]] = []
+    def _radius_at(self, angle: float) -> float:
+        radius = self._CANOPY_BASE_RADIUS
+        for amplitude, freq, phase in self._bumps:
+            radius += amplitude * math.sin(angle * freq + phase)
+        return radius
 
-        # Central midrib, two columns so it's symmetric about the panel's
-        # center, plus a single pointed tip pixel-pair above it.
-        for y in range(self._MIDRIB_TOP, self._MIDRIB_BOTTOM + 1):
-            self.pixels.append((self._MIDRIB_LEFT, y, 1.0))
-            self.pixels.append((self._MIDRIB_RIGHT, y, 1.0))
-
-        # Mirrored lateral veins, angled diagonally up-and-out from the
-        # midrib toward the tip.
-        for vein_y, length in zip(self._VEIN_ROWS, self._VEIN_LENGTHS):
-            for step in range(1, length + 1):
-                vy = vein_y - step
-                if vy < self._MIDRIB_TOP:
-                    break
-                self.pixels.append((self._MIDRIB_LEFT - step, vy, 1.0))
-                self.pixels.append((self._MIDRIB_RIGHT + step, vy, 1.0))
-
-        # Stem hangs straight down from the base of the midrib.
-        for i in range(1, self._STEM_LEN + 1):
-            y = self._MIDRIB_BOTTOM + i
-            self.pixels.append((self._MIDRIB_LEFT, y, 1.0))
-            self.pixels.append((self._MIDRIB_RIGHT, y, 1.0))
-
-    def _color_at(self, t: float) -> tuple[int, int, int]:
-        """Blend through FALL_COLOR_STOPS as t goes 0 -> 1 across the
-        non-crumbling part of the cycle."""
-        stops = FALL_COLOR_STOPS
-        span = min(t, self._CRUMBLE_START) / self._CRUMBLE_START
-        scaled = span * (len(stops) - 1)
-        idx = min(len(stops) - 2, int(scaled))
-        frac = scaled - idx
-        return _blend(stops[idx], stops[idx + 1], frac)
+    def _build_canopy(self):
+        self.canopy: list[tuple[int, int, _CanopyPixel]] = []
+        for y in range(self._CANOPY_TOP_ROW, self._CANOPY_BOTTOM_ROW + 1):
+            for x in range(WIDTH):
+                dx = x - self._CANOPY_CX
+                dy = y - self._CANOPY_CY
+                dist = math.sqrt(dx * dx + dy * dy)
+                angle = math.atan2(dy, dx)
+                if dist <= self._radius_at(angle):
+                    self.canopy.append((x, y, _CanopyPixel()))
 
     def update(self, leds: list, frame: int) -> None:
-        cycle_index = frame // self._CYCLE_FRAMES
-        if cycle_index != self._last_cycle_index:
-            self._last_cycle_index = cycle_index
-            self.crumble_thresholds = [
-                random.uniform(self._CRUMBLE_START, 1.0) for _ in self.pixels
-            ]
-
-        t = (frame % self._CYCLE_FRAMES) / self._CYCLE_FRAMES
-        color = self._color_at(t)
-
-        if t > self._CRUMBLE_START:
-            darken_t = (t - self._CRUMBLE_START) / (1.0 - self._CRUMBLE_START)
-            brightness_scale = max(0.0, 1.0 - darken_t)
-        else:
-            brightness_scale = 1.0
-        color = _scale(color, brightness_scale)
+        hue, sat, cap = get_fall_palette_color(frame)
+        base_color = hsv_to_rgb(hue, sat, cap)
 
         _clear(leds)
-        for (x, y, coverage), threshold in zip(self.pixels, self.crumble_thresholds):
-            if t >= threshold:
-                continue  # this pixel has crumbled away for the rest of this leaf's life
-            _set(leds, x, y, _scale(color, coverage))
+        for x, y, pixel in self.canopy:
+            _set(leds, x, y, _scale(base_color, pixel.brightness(frame)))
+
+        for y in range(self._TRUNK_TOP, self._TRUNK_BOTTOM + 1):
+            _set(leds, self._TRUNK_LEFT, y, self._TRUNK_COLOR)
+            _set(leds, self._TRUNK_RIGHT, y, self._TRUNK_COLOR)
