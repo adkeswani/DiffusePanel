@@ -408,8 +408,8 @@ class FallTree(Pattern):
     # the lowest branches read as growing out of the trunk itself.
     _BRANCH_START_Y = 13
 
-    _MAX_BRANCH_PIXELS = 160
-    _MAX_LEAF_PIXELS = 200
+    _MAX_BRANCH_PIXELS = 60
+    _MAX_LEAF_PIXELS = 360
 
     def __init__(self):
         super().__init__()
@@ -456,7 +456,7 @@ class FallTree(Pattern):
             else:
                 if y < -2 or len(branch_coords) >= self._MAX_BRANCH_PIXELS:
                     continue
-                if random.random() < 0.6:
+                if random.random() < 0.45:
                     # Fork into two branches, inheriting diverging biases
                     # so each half keeps fanning further apart.
                     tips.append((x, y, drift + random.uniform(0.3, 0.8), bias + 0.6))
@@ -468,14 +468,27 @@ class FallTree(Pattern):
 
         # Scatter leaf pixels in the neighborhood of the branches, so the
         # branch skeleton stays a clean white while the foliage reads as
-        # a separate, fall-colored layer around it.
+        # a separate, fall-colored layer around it. Leaves cluster densely
+        # right around each branch pixel, and more sparsely a bit further
+        # out, for a fuller foliage look around a thin branch structure.
         leaf_coords: set[tuple[int, int]] = set()
-        neighbor_offsets = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+        near_offsets = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+        far_offsets = [
+            (dx, dy)
+            for dx in (-2, -1, 0, 1, 2)
+            for dy in (-2, -1, 0, 1, 2)
+            if (dx, dy) not in near_offsets and (dx, dy) != (0, 0)
+        ]
         for bx, by in branch_coords:
             if len(leaf_coords) >= self._MAX_LEAF_PIXELS:
                 break
-            for dx, dy in neighbor_offsets:
-                if random.random() < 0.3:
+            for dx, dy in near_offsets:
+                if random.random() < 0.65:
+                    nx, ny = bx + dx, by + dy
+                    if (nx, ny) not in branch_coords:
+                        leaf_coords.add((nx, ny))
+            for dx, dy in far_offsets:
+                if random.random() < 0.18:
                     nx, ny = bx + dx, by + dy
                     if (nx, ny) not in branch_coords:
                         leaf_coords.add((nx, ny))
