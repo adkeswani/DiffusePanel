@@ -114,8 +114,10 @@ class _FallOrb:
         self.hold_duration = random.randint(20, 80)
         self.fade_out_duration = random.randint(50, 150)
 
-        self.blooms = random.random() < 0.35
-        self.bloom_amount = random.randint(60, 120) if self.blooms else 0
+        # No white bloom -- keep orbs fully saturated so they stay true
+        # autumn colors instead of fading toward white at their peak.
+        self.blooms = False
+        self.bloom_amount = 0
 
         self.state = "sleeping"  # sleeping -> fading_in -> holding -> fading_out -> sleeping
         self.frame_in_state = 0
@@ -288,7 +290,9 @@ class FallRingWave(Pattern):
                         t = t * t * (3.0 - 2.0 * t)
 
                         brightness = int((120 + t * 100) * ring_fade)
-                        pixel_hue = (hue + int(t * 10)) % 256
+                        # Keep the same hue as the base ring -- a hue shift
+                        # here can drift yellow toward green.
+                        pixel_hue = hue
                         pixel_sat = max(0, sat - int(t * 20))
                     else:
                         # Rest of the ring: always lit with the base color.
@@ -376,24 +380,33 @@ class TumblingLeaves(Pattern):
 
 
 class AutumnLeaf(Pattern):
-    """A single leaf silhouette that slowly shifts color through the fall
-    spectrum (yellow -> orange -> red -> brown), then crumbles apart pixel
-    by pixel as it darkens, before a fresh leaf grows back in and the
-    cycle repeats.
+    """A symmetrical leaf-vein skeleton that slowly shifts color through
+    the fall spectrum (yellow -> orange -> red -> brown), then crumbles
+    apart pixel by pixel as it darkens, before a fresh leaf grows back in
+    and the cycle repeats.
 
-    The silhouette is a classic tapered leaf: a pointed-oval/"vesica"
-    shape, narrow at the top tip, widest at the middle, tapering back to a
-    point at the bottom tip with a short stem -- simple and reads clearly
-    as a leaf at low resolution.
+    Rather than a filled silhouette, this draws just the veins: a central
+    midrib (two columns wide, straddling the panel's center so it's
+    perfectly symmetric) with mirrored lateral veins branching off it,
+    angled toward the tip like a real leaf's venation -- short veins near
+    the tip, longer ones near the base.
     """
 
     name = "Autumn Leaf"
 
-    _CX = 7.5             # horizontal center column
-    _TOP_Y = 1             # row of the top tip
-    _BODY_HEIGHT = 11      # rows from top tip to bottom tip
-    _MAX_HALF_WIDTH = 4.0  # half-width at the widest (middle) row
+    _MIDRIB_LEFT = 7       # left-of-center midrib column
+    _MIDRIB_RIGHT = 8      # mirror of _MIDRIB_LEFT (15 - 7 == 8)
+    _MIDRIB_TOP = 2        # row of the leaf tip
+    _MIDRIB_BOTTOM = 13    # row where the midrib meets the stem
     _STEM_LEN = 3
+
+    # Rows along the midrib where a mirrored pair of lateral veins
+    # branches off, and how many steps (diagonally up-and-out) each pair
+    # reaches -- longer near the base, shorter near the tip. Spaced far
+    # enough apart that no two veins' pixels overlap, so each reads as a
+    # clean separate chevron rather than a crossed lattice.
+    _VEIN_ROWS = (4, 8, 12)
+    _VEIN_LENGTHS = (2, 3, 4)
 
     _CYCLE_FRAMES = 1800        # ~30s at 60fps for one full life of a leaf
     _CRUMBLE_START = 0.78       # fraction of the cycle where crumbling begins
@@ -405,23 +418,32 @@ class AutumnLeaf(Pattern):
         self.crumble_thresholds = [0.0] * len(self.pixels)
 
     def _build_shape(self):
-        """Precompute the leaf's pixel coordinates and edge-antialiasing
-        coverage (0-1), plus a short stem below the bottom tip."""
+        """Precompute the leaf's vein pixel coordinates (all full
+        brightness, no antialiasing needed for thin lines), plus a short
+        stem below the base of the midrib."""
         self.pixels: list[tuple[int, int, float]] = []
-        for row in range(self._BODY_HEIGHT + 1):
-            t = row / self._BODY_HEIGHT  # 0 at top tip, 1 at bottom tip
-            half_width = self._MAX_HALF_WIDTH * math.sin(math.pi * t)
-            y = self._TOP_Y + row
-            for x in range(WIDTH):
-                coverage = half_width - abs(x - self._CX)
-                if coverage > 0:
-                    self.pixels.append((x, y, min(1.0, coverage)))
 
-        # Stem hangs straight down from the bottom tip.
-        stem_x = int(round(self._CX))
-        base_y = self._TOP_Y + self._BODY_HEIGHT
+        # Central midrib, two columns so it's symmetric about the panel's
+        # center, plus a single pointed tip pixel-pair above it.
+        for y in range(self._MIDRIB_TOP, self._MIDRIB_BOTTOM + 1):
+            self.pixels.append((self._MIDRIB_LEFT, y, 1.0))
+            self.pixels.append((self._MIDRIB_RIGHT, y, 1.0))
+
+        # Mirrored lateral veins, angled diagonally up-and-out from the
+        # midrib toward the tip.
+        for vein_y, length in zip(self._VEIN_ROWS, self._VEIN_LENGTHS):
+            for step in range(1, length + 1):
+                vy = vein_y - step
+                if vy < self._MIDRIB_TOP:
+                    break
+                self.pixels.append((self._MIDRIB_LEFT - step, vy, 1.0))
+                self.pixels.append((self._MIDRIB_RIGHT + step, vy, 1.0))
+
+        # Stem hangs straight down from the base of the midrib.
         for i in range(1, self._STEM_LEN + 1):
-            self.pixels.append((stem_x, base_y + i, 1.0))
+            y = self._MIDRIB_BOTTOM + i
+            self.pixels.append((self._MIDRIB_LEFT, y, 1.0))
+            self.pixels.append((self._MIDRIB_RIGHT, y, 1.0))
 
     def _color_at(self, t: float) -> tuple[int, int, int]:
         """Blend through FALL_COLOR_STOPS as t goes 0 -> 1 across the
