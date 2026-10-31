@@ -18,9 +18,10 @@ from patterns.halloween import (
     PacManGhost,
 )
 from patterns.fall import (
+    AutumnLeaf,
     FallBokeh,
-    FallRingFade,
-    MapleLeaf,
+    FallBokehMix,
+    FallRingWave,
     TumblingLeaves,
 )
 
@@ -30,10 +31,11 @@ ALL_PATTERNS = [
     BreathingFog,
     FlowingSlime,
     PacManGhost,
-    FallRingFade,
+    FallRingWave,
     FallBokeh,
+    FallBokehMix,
     TumblingLeaves,
-    MapleLeaf,
+    AutumnLeaf,
     BloodMoonEclipse,
     CreepingMoss,
     FallingSand,

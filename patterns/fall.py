@@ -5,10 +5,10 @@ contrast shapes; small helper functions mirroring what's easy to write in
 Arduino/FastLED) but with its own seasonal color palette so it can be ported
 to its own standalone .ino sketch later.
 
-The five "fall colors" used throughout this file -- pale green, yellow,
-orange, red, brown -- are always cycled in that order, which reads as a
-leaf's natural decay: fresh green, turning yellow, then orange, then red,
-then brown, before looping back to green.
+The four "fall colors" used throughout this file -- yellow, orange, red,
+brown -- are always cycled in that order, which reads as a leaf's natural
+decay: golden yellow, turning orange, then red, then brown, before looping
+back to yellow.
 """
 
 import math
@@ -20,27 +20,25 @@ BLACK = (0, 0, 0)
 
 # Concrete RGB "fall colors", used wherever a pattern needs a fixed set of
 # discrete colors to pick from (as opposed to a smoothly crossfading hue).
-PALE_GREEN = (140, 205, 90)
 YELLOW = (255, 195, 25)
 ORANGE = (255, 110, 10)
 RED = (210, 35, 10)
 BROWN = (120, 65, 20)
 
-# Same five colors, ordered for a smooth seasonal gradient (green -> yellow
-# -> orange -> red -> brown), looping back to green.
-FALL_COLOR_STOPS = (PALE_GREEN, YELLOW, ORANGE, RED, BROWN)
+# Same four colors, ordered for a smooth seasonal gradient (yellow -> orange
+# -> red -> brown), looping back to yellow.
+FALL_COLOR_STOPS = (YELLOW, ORANGE, RED, BROWN)
 
 # HSV equivalents (hue/sat 0-255, plus a brightness cap 0-255) of the same
-# five colors, for patterns that want to crossfade smoothly through hue/sat
+# four colors, for patterns that want to crossfade smoothly through hue/sat
 # space rather than blending concrete RGB stops. The cap keeps muted colors
 # (especially brown) from being blown out to a bright orange at full value.
-_PALE_GREEN_HSV = (90, 130, 215)
 _YELLOW_HSV = (42, 235, 255)
 _ORANGE_HSV = (20, 255, 255)
 _RED_HSV = (0, 230, 230)
 _BROWN_HSV = (14, 190, 125)
 
-FALL_PALETTE_HSV = (_PALE_GREEN_HSV, _YELLOW_HSV, _ORANGE_HSV, _RED_HSV, _BROWN_HSV)
+FALL_PALETTE_HSV = (_YELLOW_HSV, _ORANGE_HSV, _RED_HSV, _BROWN_HSV)
 
 # How long to hold each color, and how long to crossfade to the next one.
 FALL_PALETTE_HOLD_FRAMES = 420   # ~7s at 60fps
@@ -194,8 +192,8 @@ class _FallOrb:
 
 class FallBokeh(Pattern):
     """Bokeh pattern (soft glowing orbs), recolored with fall colors:
-    pale green, yellow, orange, red, and brown, smoothly crossfading
-    through that seasonal order."""
+    yellow, orange, red, and brown, smoothly crossfading through that
+    seasonal order."""
 
     name = "Fall Bokeh"
 
@@ -215,13 +213,42 @@ class FallBokeh(Pattern):
             leds[i] = self.orbs[i].update()
 
 
-class FallRingFade(Pattern):
-    """The thick-ring-with-rotating-wave pattern, recolored so the ring's
-    base color smoothly cycles through the fall color spectrum (pale
-    green -> yellow -> orange -> red -> brown -> loop) instead of a full
-    rainbow hue sweep."""
+class _FallOrbIndependent(_FallOrb):
+    """Like _FallOrb, but each orb independently picks its own random stop
+    from the fall palette instead of following one shared, synced color."""
 
-    name = "Fall Ring Fade"
+    def reset(self):
+        super().reset()
+        self.hue, self.sat, self.cap = random.choice(FALL_PALETTE_HSV)
+
+
+class FallBokehMix(Pattern):
+    """Same bokeh mechanic as FallBokeh, but every pixel independently
+    picks its own random fall color (yellow/orange/red/brown) instead of
+    the whole panel sharing one synced color at a time."""
+
+    name = "Fall Bokeh Mix"
+
+    def __init__(self):
+        super().__init__()
+        self.orbs = []
+        for i in range(NUM_LEDS):
+            orb = _FallOrbIndependent()
+            orb.sleep_frames = random.randint(0, 180)
+            self.orbs.append(orb)
+
+    def update(self, leds: list, frame: int) -> None:
+        for i in range(NUM_LEDS):
+            leds[i] = self.orbs[i].update()
+
+
+class FallRingWave(Pattern):
+    """A thick ring that's always fully lit, with a brighter wave of color
+    chasing around it, recolored so the ring's base color smoothly cycles
+    through the fall color spectrum (yellow -> orange -> red -> brown ->
+    loop) instead of a full rainbow hue sweep."""
+
+    name = "Fall Ring Wave"
 
     def __init__(self):
         super().__init__()
@@ -256,14 +283,16 @@ class FallRingFade(Pattern):
                         angle_diff = 2 * math.pi - angle_diff
 
                     if angle_diff < self.wave_width:
+                        # Inside the wave: brighter, slightly shifted color.
                         t = 1.0 - (angle_diff / self.wave_width)
                         t = t * t * (3.0 - 2.0 * t)
 
-                        brightness = int((60 + t * 180) * ring_fade)
+                        brightness = int((120 + t * 100) * ring_fade)
                         pixel_hue = (hue + int(t * 10)) % 256
                         pixel_sat = max(0, sat - int(t * 20))
                     else:
-                        brightness = int(40 * ring_fade)
+                        # Rest of the ring: always lit with the base color.
+                        brightness = int(120 * ring_fade)
                         pixel_hue = hue
                         pixel_sat = sat
 
@@ -285,7 +314,7 @@ class _TumblingLeaf:
     def reset(self):
         self.x = float(random.randint(0, WIDTH - 1))
         self.y = random.uniform(-4.0, -0.5)
-        self.fall_speed = random.uniform(0.03, 0.07)
+        self.fall_speed = random.uniform(0.012, 0.028)
         self.color = random.choice(FALL_COLOR_STOPS)
 
         # Tumbling flicker: brightness oscillates between a dim and bright
@@ -346,23 +375,24 @@ class TumblingLeaves(Pattern):
                 _set(leds, x, y, _scale(leaf.color, leaf.brightness()))
 
 
-class MapleLeaf(Pattern):
-    """A single maple-leaf silhouette that slowly shifts color through the
-    fall spectrum (green -> yellow -> orange -> red -> brown), then
-    crumbles apart pixel by pixel as it darkens, before a fresh leaf grows
-    back in and the cycle repeats.
+class AutumnLeaf(Pattern):
+    """A single leaf silhouette that slowly shifts color through the fall
+    spectrum (yellow -> orange -> red -> brown), then crumbles apart pixel
+    by pixel as it darkens, before a fresh leaf grows back in and the
+    cycle repeats.
 
-    The silhouette is a simple 3-lobed outline (one point up, two lower
-    side points) computed from a polar radius function rather than a hand
-    drawn bitmap, so it stays smooth/anti-aliased and is easy to shrink
-    for the crumbling effect.
+    The silhouette is a classic tapered leaf: a pointed-oval/"vesica"
+    shape, narrow at the top tip, widest at the middle, tapering back to a
+    point at the bottom tip with a short stem -- simple and reads clearly
+    as a leaf at low resolution.
     """
 
-    name = "Maple Leaf"
+    name = "Autumn Leaf"
 
-    _CX, _CY = 7.5, 6.5
-    _R0 = 4.3    # base radius of the lobed outline
-    _R1 = 2.1    # lobe amplitude (how pointy the 3 lobes are)
+    _CX = 7.5             # horizontal center column
+    _TOP_Y = 1             # row of the top tip
+    _BODY_HEIGHT = 11      # rows from top tip to bottom tip
+    _MAX_HALF_WIDTH = 4.0  # half-width at the widest (middle) row
     _STEM_LEN = 3
 
     _CYCLE_FRAMES = 1800        # ~30s at 60fps for one full life of a leaf
@@ -376,23 +406,20 @@ class MapleLeaf(Pattern):
 
     def _build_shape(self):
         """Precompute the leaf's pixel coordinates and edge-antialiasing
-        coverage (0-1), plus a short stem below the lowest point."""
+        coverage (0-1), plus a short stem below the bottom tip."""
         self.pixels: list[tuple[int, int, float]] = []
-        for y in range(HEIGHT):
+        for row in range(self._BODY_HEIGHT + 1):
+            t = row / self._BODY_HEIGHT  # 0 at top tip, 1 at bottom tip
+            half_width = self._MAX_HALF_WIDTH * math.sin(math.pi * t)
+            y = self._TOP_Y + row
             for x in range(WIDTH):
-                dx = x - self._CX
-                dy = self._CY - y  # flip so "up" is positive, matching theta=90 as the top point
-                theta = math.atan2(dy, dx)
-                dist = math.hypot(dx, dy)
-                outline = self._R0 + self._R1 * math.cos(3 * (theta - math.pi / 2))
-                coverage = outline - dist
+                coverage = half_width - abs(x - self._CX)
                 if coverage > 0:
                     self.pixels.append((x, y, min(1.0, coverage)))
 
-        # Stem hangs straight down from the lowest (pinched-in) point of
-        # the outline.
+        # Stem hangs straight down from the bottom tip.
         stem_x = int(round(self._CX))
-        base_y = int(round(self._CY + (self._R0 - self._R1)))
+        base_y = self._TOP_Y + self._BODY_HEIGHT
         for i in range(1, self._STEM_LEN + 1):
             self.pixels.append((stem_x, base_y + i, 1.0))
 
