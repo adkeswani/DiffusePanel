@@ -368,57 +368,116 @@ class TumblingLeaves(Pattern):
                 _set(leds, x, y, _scale(leaf.color, leaf.brightness()))
 
 
-class FallMapleLeaf(Pattern):
-    """A solid, recognizable maple-leaf silhouette that gently pulses in
-    brightness while its color slowly bounces through the fall spectrum
-    (yellow -> orange -> red -> brown -> back).
-
-    Deliberately a simple, hand-drawn, static shape rather than anything
-    organic/randomized -- a 16x16 panel just doesn't have the resolution
-    to read fine, irregular detail (branches, veins, crumbling edges)
-    well, but a bold, recognizable silhouette reads clearly.
+class FallLeafDecay(Pattern):
+    """A full screen of yellow pixels that slowly decays: the color
+    bleeds from yellow through orange and red into brown while individual
+    pixels randomly wink out one by one, like leaves falling. The last
+    pixels left standing trace a branching, vein-like skeleton that
+    itself recedes from its tips back to its root -- before everything
+    goes dark and the cycle loops back to a fresh, full yellow screen.
     """
 
-    name = "Maple Leaf"
+    name = "Leaf Decay"
 
-    # Leftmost/rightmost filled column per row (0=top, 15=bottom), hand-
-    # tuned to read as a maple leaf: a pointed tip, two wide "shoulder"
-    # lobes, a pinched waist, two lower lobes, and a short stem.
-    _ROWS = [
-        (7, 8),
-        (6, 9),
-        (6, 9),
-        (5, 10),
-        (3, 12),
-        (2, 13),
-        (4, 11),
-        (3, 12),
-        (3, 12),
-        (4, 11),
-        (5, 10),
-        (6, 9),
-        (6, 9),
-        (7, 8),
-        (7, 8),
-        (7, 8),
-    ]
-
-    _PULSE_FREQ = 0.015
+    _CYCLE_FRAMES = 2400          # full decay-and-reset cycle length
+    _COLOR_DECAY_FRACTION = 0.75  # color reaches brown by 75% through
+    _FADE_IN_FRACTION = 0.08      # the whole screen fades back in to full
+                                   # yellow over this fraction of the cycle,
+                                   # right after a full decay/reset
+    _MAX_VEIN_PIXELS = 90
 
     def __init__(self):
         super().__init__()
-        self._pixels = []
-        for y, (left, right) in enumerate(self._ROWS):
-            for x in range(left, right + 1):
-                self._pixels.append((x, y))
+        self._build_decay_order()
+
+    def _build_decay_order(self):
+        """Pick a branching vein skeleton (the same forking random-walk
+        growth used elsewhere for tree-like shapes) and assign every
+        pixel a disappear_fraction: most pixels get a random time, but
+        the vein pixels are biased to disappear later, in order from
+        their tips back to their roots, so a faint branch/vein pattern is
+        the last thing visible before everything goes dark."""
+        vein_growth_order: dict[tuple[int, int], int] = {}
+
+        num_starts = 5
+        tips = [
+            (float(random.randint(2, WIDTH - 3)), float(HEIGHT - 1), random.uniform(-0.5, 0.5))
+            for _ in range(num_starts)
+        ]
+        while tips and len(vein_growth_order) < self._MAX_VEIN_PIXELS:
+            x, y, drift = tips.pop()
+            run_length = random.randint(2, 4)
+            for _ in range(run_length):
+                coord = (int(round(x)), int(round(y)))
+                if 0 <= coord[0] < WIDTH and 0 <= coord[1] < HEIGHT and coord not in vein_growth_order:
+                    vein_growth_order[coord] = len(vein_growth_order)
+                y -= 1
+                drift += random.uniform(-0.5, 0.5)
+                drift = max(-1.8, min(1.8, drift))
+                x += drift
+                if y < -1 or x < -2 or x > WIDTH + 1:
+                    break
+            else:
+                if y >= -1 and len(vein_growth_order) < self._MAX_VEIN_PIXELS:
+                    if random.random() < 0.5:
+                        tips.append((x, y, drift + random.uniform(0.3, 0.8)))
+                        tips.append((x, y, drift - random.uniform(0.3, 0.8)))
+                    else:
+                        tips.append((x, y, drift))
+
+        max_growth = max(vein_growth_order.values()) if vein_growth_order else 1
+
+        self._disappear: list[float] = [0.0] * NUM_LEDS
+        for y in range(HEIGHT):
+            for x in range(WIDTH):
+                idx = xy_to_index(x, y)
+                coord = (x, y)
+                if coord in vein_growth_order:
+                    normalized = vein_growth_order[coord] / max_growth  # 0 root .. 1 tip
+                    # Tips (normalized near 1) disappear first within the
+                    # vein's own late window; roots (near 0) hold on the
+                    # longest, so the skeleton recedes tip-to-root.
+                    self._disappear[idx] = 0.95 - normalized * 0.40
+                else:
+                    self._disappear[idx] = random.uniform(0.05, 0.8)
+
+    @staticmethod
+    def _decay_color(t: float) -> tuple[int, int, int]:
+        """One-way smooth crossfade through yellow -> orange -> red ->
+        brown as t goes 0 -> 1 (no bounce -- this only runs once per
+        decay cycle, unlike the looping fall palette)."""
+        stops = FALL_PALETTE_HSV
+        segments = len(stops) - 1
+        pos = min(max(t, 0.0), 1.0) * segments
+        idx = min(int(pos), segments - 1)
+        local_t = pos - idx
+        local_t = local_t * local_t * (3.0 - 2.0 * local_t)  # smoothstep
+        cur_hue, cur_sat, cur_cap = stops[idx]
+        nxt_hue, nxt_sat, nxt_cap = stops[idx + 1]
+        hue = int(cur_hue + (nxt_hue - cur_hue) * local_t) % 256
+        sat = int(cur_sat + (nxt_sat - cur_sat) * local_t)
+        cap = int(cur_cap + (nxt_cap - cur_cap) * local_t)
+        return hue, sat, cap
 
     def update(self, leds: list, frame: int) -> None:
-        hue, sat, cap = get_fall_palette_color(frame)
-        pulse = (math.sin(frame * self._PULSE_FREQ) + 1.0) / 2.0  # 0..1
-        brightness = int(cap * (0.55 + 0.45 * pulse))
+        cycle_frame = frame % self._CYCLE_FRAMES
+        if cycle_frame == 0 and frame > 0:
+            self._build_decay_order()
+        tc = cycle_frame / self._CYCLE_FRAMES
+
+        hue, sat, cap = self._decay_color(tc / self._COLOR_DECAY_FRACTION)
+        if tc < self._FADE_IN_FRACTION:
+            fade_in = tc / self._FADE_IN_FRACTION
+            fade_in = fade_in * fade_in * (3.0 - 2.0 * fade_in)  # smoothstep ease
+        else:
+            fade_in = 1.0
+        brightness = int(cap * fade_in)
         color = hsv_to_rgb(hue, sat, brightness)
 
-        _clear(leds)
-        for x, y in self._pixels:
-            _set(leds, x, y, color)
+        for i in range(NUM_LEDS):
+            if tc >= self._disappear[i]:
+                leds[i] = BLACK
+            else:
+                leds[i] = color
+
 

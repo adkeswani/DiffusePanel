@@ -19,7 +19,7 @@ from patterns.halloween import (
 )
 from patterns.fall import (
     FallBokehMix,
-    FallMapleLeaf,
+    FallLeafDecay,
     FallRingWave,
     TumblingLeaves,
 )
@@ -33,7 +33,7 @@ ALL_PATTERNS = [
     FallRingWave,
     FallBokehMix,
     TumblingLeaves,
-    FallMapleLeaf,
+    FallLeafDecay,
     BloodMoonEclipse,
     CreepingMoss,
     FallingSand,
