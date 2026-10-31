@@ -383,9 +383,13 @@ class _CanopyPixel:
 
 
 class FallTree(Pattern):
-    """A simple tree: a white trunk topped by a rough, irregularly-shaped
-    cluster of canopy pixels. Each canopy pixel fades on and off on its
-    own cycle (like leaves catching the light), while the whole canopy's
+    """A simple tree: a white trunk at the bottom with random, single-
+    pixel-wide branches that fork and grow upward from it, reaching all
+    the way to the top of the display (and getting cut off at the top/
+    sides -- that's fine, it just reads as a big tree filling the panel).
+
+    Every branch pixel acts as a "leaf": it fades on and off on its own
+    cycle (like catching and losing the light), while the whole tree's
     color slowly bounces back and forth through the fall spectrum
     together (yellow -> orange -> red -> brown -> back).
     """
@@ -394,50 +398,62 @@ class FallTree(Pattern):
 
     _TRUNK_LEFT = 7
     _TRUNK_RIGHT = 8
-    _TRUNK_TOP = 11
+    _TRUNK_TOP = 10
     _TRUNK_BOTTOM = 15
     _TRUNK_COLOR = (200, 200, 200)
 
-    _CANOPY_CX = 7.5
-    _CANOPY_CY = 7.0
-    _CANOPY_BASE_RADIUS = 5.3
-    _CANOPY_TOP_ROW = 0
-    _CANOPY_BOTTOM_ROW = 10  # overlaps slightly with the top of the trunk
+    _MAX_BRANCH_PIXELS = 220
 
     def __init__(self):
         super().__init__()
-        # A handful of random sine harmonics (fixed per tree instance) so
-        # the canopy's edge is a rough, organic blob instead of a perfect
-        # circle -- same silhouette every frame, just irregular.
-        self._bumps = [
-            (random.uniform(0.6, 1.4), random.randint(2, 5), random.uniform(0, 2 * math.pi))
-            for _ in range(3)
+        self._build_branches()
+
+    def _build_branches(self):
+        """Grow random single-pixel-wide branches upward from the top of
+        the trunk via a branching random walk, until they run off the top
+        of the display (or far enough past the sides)."""
+        branch_coords: set[tuple[int, int]] = set()
+
+        # A few branches start together at the top of the trunk.
+        tips = [
+            (float(random.choice((self._TRUNK_LEFT, self._TRUNK_RIGHT))), float(self._TRUNK_TOP), 0.0)
+            for _ in range(4)
         ]
-        self._build_canopy()
 
-    def _radius_at(self, angle: float) -> float:
-        radius = self._CANOPY_BASE_RADIUS
-        for amplitude, freq, phase in self._bumps:
-            radius += amplitude * math.sin(angle * freq + phase)
-        return radius
+        while tips and len(branch_coords) < self._MAX_BRANCH_PIXELS:
+            x, y, drift = tips.pop()
 
-    def _build_canopy(self):
-        self.canopy: list[tuple[int, int, _CanopyPixel]] = []
-        for y in range(self._CANOPY_TOP_ROW, self._CANOPY_BOTTOM_ROW + 1):
-            for x in range(WIDTH):
-                dx = x - self._CANOPY_CX
-                dy = y - self._CANOPY_CY
-                dist = math.sqrt(dx * dx + dy * dy)
-                angle = math.atan2(dy, dx)
-                if dist <= self._radius_at(angle):
-                    self.canopy.append((x, y, _CanopyPixel()))
+            # Walk this branch upward a short run before deciding whether
+            # to fork, stop, or keep going.
+            run_length = random.randint(2, 5)
+            for _ in range(run_length):
+                branch_coords.add((int(round(x)), int(round(y))))
+                y -= 1
+                drift += random.uniform(-0.4, 0.4)
+                drift = max(-1.2, min(1.2, drift))
+                x += drift
+                # Let branches run off the top/sides -- just stop growing
+                # that particular branch once it's well past the edge.
+                if y < -2 or x < -3 or x > WIDTH + 2:
+                    break
+            else:
+                if y < -2 or len(branch_coords) >= self._MAX_BRANCH_PIXELS:
+                    continue
+                if random.random() < 0.65:
+                    # Fork into two branches heading slightly apart.
+                    tips.append((x, y, drift + random.uniform(0.3, 0.9)))
+                    tips.append((x, y, drift - random.uniform(0.3, 0.9)))
+                else:
+                    tips.append((x, y, drift))
+
+        self.branches = [(x, y, _CanopyPixel()) for x, y in branch_coords]
 
     def update(self, leds: list, frame: int) -> None:
         hue, sat, cap = get_fall_palette_color(frame)
         base_color = hsv_to_rgb(hue, sat, cap)
 
         _clear(leds)
-        for x, y, pixel in self.canopy:
+        for x, y, pixel in self.branches:
             _set(leds, x, y, _scale(base_color, pixel.brightness(frame)))
 
         for y in range(self._TRUNK_TOP, self._TRUNK_BOTTOM + 1):
