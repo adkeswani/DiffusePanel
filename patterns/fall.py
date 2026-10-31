@@ -371,10 +371,10 @@ class TumblingLeaves(Pattern):
 class FallLeafDecay(Pattern):
     """A full screen of yellow pixels that slowly decays: the color
     bleeds from yellow through orange and red into brown while individual
-    pixels randomly wink out one by one, like leaves falling. The last
-    pixels left standing trace a branching, vein-like skeleton that
-    itself recedes from its tips back to its root -- before everything
-    goes dark and the cycle loops back to a fresh, full yellow screen.
+    pixels fade out one by one, like leaves falling. The last pixels left
+    standing trace a branching, vein-like skeleton that itself recedes
+    from its tips back to its root -- before everything goes dark and the
+    cycle loops back to a fresh, full yellow screen.
     """
 
     name = "Leaf Decay"
@@ -428,6 +428,7 @@ class FallLeafDecay(Pattern):
         max_growth = max(vein_growth_order.values()) if vein_growth_order else 1
 
         self._disappear: list[float] = [0.0] * NUM_LEDS
+        self._fade_out: list[float] = [0.0] * NUM_LEDS
         for y in range(HEIGHT):
             for x in range(WIDTH):
                 idx = xy_to_index(x, y)
@@ -438,8 +439,10 @@ class FallLeafDecay(Pattern):
                     # vein's own late window; roots (near 0) hold on the
                     # longest, so the skeleton recedes tip-to-root.
                     self._disappear[idx] = 0.95 - normalized * 0.40
+                    self._fade_out[idx] = random.uniform(0.05, 0.10)
                 else:
                     self._disappear[idx] = random.uniform(0.05, 0.8)
+                    self._fade_out[idx] = random.uniform(0.03, 0.08)
 
     @staticmethod
     def _decay_color(t: float) -> tuple[int, int, int]:
@@ -475,8 +478,15 @@ class FallLeafDecay(Pattern):
         color = hsv_to_rgb(hue, sat, brightness)
 
         for i in range(NUM_LEDS):
-            if tc >= self._disappear[i]:
+            disappear = self._disappear[i]
+            fade_out = self._fade_out[i]
+            fade_start = disappear - fade_out
+            if tc >= disappear:
                 leds[i] = BLACK
+            elif tc >= fade_start:
+                local_t = (tc - fade_start) / fade_out
+                local_t = local_t * local_t * (3.0 - 2.0 * local_t)  # smoothstep
+                leds[i] = _scale(color, 1.0 - local_t)
             else:
                 leds[i] = color
 
