@@ -56,6 +56,7 @@ struct FallHSV;
 struct FallOrb;
 struct TumblingLeaf;
 FallHSV getFallPaletteColor(uint32_t f);
+FallHSV randomFallPaletteColor();
 FallHSV fallDecayColor(float t);
 void fallOrbReset(FallOrb &o);
 void tumblingLeafReset(TumblingLeaf &l);
@@ -248,8 +249,27 @@ FallHSV getFallPaletteColor(uint32_t f) {
   return result;
 }
 
-// ============================================================
-// Pattern: Fall Bokeh Mix
+// A continuous random fall color anywhere between gold and red (not just
+// one of the 3 discrete stops) -- interpolates to a random point along the
+// gold -> orange -> red gradient, same curve fallDecayColor() sweeps
+// through over time.
+FallHSV randomFallPaletteColor() {
+  const uint8_t segments = 2;  // len(FALL_PALETTE_HSV) - 1
+  float pos = randFloat(0.0f, 1.0f) * segments;
+  uint8_t idx = (uint8_t)pos;
+  if (idx > segments - 1) idx = segments - 1;
+  float localT = pos - idx;
+
+  FallHSV cur = FALL_PALETTE_HSV[idx];
+  FallHSV nxt = FALL_PALETTE_HSV[idx + 1];
+
+  FallHSV result;
+  int16_t hueDiff = (int16_t)nxt.hue - (int16_t)cur.hue;
+  result.hue = (uint8_t)((int16_t)cur.hue + (int16_t)(hueDiff * localT));
+  result.sat = (uint8_t)(cur.sat + (int16_t)(nxt.sat - cur.sat) * localT);
+  result.cap = (uint8_t)(cur.cap + (int16_t)(nxt.cap - cur.cap) * localT);
+  return result;
+}
 // Soft glowing orbs that fade in/out independently per LED, each
 // independently picking its own random fall color.
 // ============================================================
@@ -444,10 +464,10 @@ void tumblingLeafReset(TumblingLeaf &l) {
   l.y = randFloat(-4.0f, -0.5f);
   l.fallSpeed = randFloat(0.0132f, 0.0308f);  // 10% faster than the original 0.012-0.028
   {
-    uint8_t stopIdx = randRange(0, 2);
-    l.hue = FALL_PALETTE_HSV[stopIdx].hue;
-    l.sat = FALL_PALETTE_HSV[stopIdx].sat;
-    l.cap = FALL_PALETTE_HSV[stopIdx].cap;
+    FallHSV c = randomFallPaletteColor();
+    l.hue = c.hue;
+    l.sat = c.sat;
+    l.cap = c.cap;
   }
 
   l.tumbleFreq = randFloat(0.15f, 0.35f);
