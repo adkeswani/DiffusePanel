@@ -442,7 +442,7 @@ static int16_t leafSpawnCooldown = 0;
 void tumblingLeafReset(TumblingLeaf &l) {
   l.x = (float)randRange(0, WIDTH - 1);
   l.y = randFloat(-4.0f, -0.5f);
-  l.fallSpeed = randFloat(0.012f, 0.028f);
+  l.fallSpeed = randFloat(0.0132f, 0.0308f);  // 10% faster than the original 0.012-0.028
   {
     uint8_t stopIdx = randRange(0, 2);
     l.hue = FALL_PALETTE_HSV[stopIdx].hue;
