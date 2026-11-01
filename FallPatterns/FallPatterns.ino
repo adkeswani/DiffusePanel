@@ -39,7 +39,7 @@
 #define PATTERN_DURATION_MS  60000  // 60 seconds per pattern (Leaf Decay's
                                      // full cycle is ~40s at 60fps)
 #define TRANSITION_MS        2000   // 2 second fade transitions
-#define NUM_PATTERNS         4
+#define NUM_PATTERNS         5
 
 CRGB leds[NUM_LEDS];
 uint32_t frame = 0;
@@ -74,6 +74,106 @@ static inline float randFloat(float lo, float hi) {
 // Uniform integer in [lo, hi] inclusive, matching Python's random.randint(lo, hi).
 static inline int32_t randRange(int32_t lo, int32_t hi) {
   return lo + (int32_t)random16(0, (uint16_t)(hi - lo + 1));
+}
+
+// ============================================================
+// Pattern: Fall Embers
+// Smooth noise-driven canopy, recolored from the shared Botanical Field /
+// Feathered Grass noise technique (see HalloweenPatterns.ino and
+// DiffusePanelPatterns.ino): same two-noise-channel mechanic, but the
+// green midtones become orange, the near-black dark gaps become a dim
+// ember red, and the golden highlight accent at intensity peaks is kept
+// as-is.
+// ============================================================
+
+// Spike-safe 2D noise. FastLED's inoise8() wrapper has a sign-overflow bug:
+// inoise8_raw() can return -65 (one below its -64 floor); the wrapper then does
+// n = raw + 64 = -1 (int8_t) and qadd8(n, n) reinterprets -1 as 255 -> a lone
+// blazing pixel. Clamping raw to -64 before scaling removes the spike at its
+// source with zero false positives (raw only dips below -64 during the bug).
+static inline uint8_t inoise8_fixed(uint16_t x, uint16_t y) {
+  int8_t raw = inoise8_raw(x, y);
+  if (raw < -64) raw = -64;
+  uint8_t n = (uint8_t)(raw + 64);  // 0..128
+  return qadd8(n, n);               // 0..255, matches inoise8() scaling
+}
+
+static int8_t emberDirX = 1;  // +1 or -1
+static int8_t emberDirY = 1;  // +1 or -1
+static uint16_t emberOriginX = 0;  // Random noise-space origin, re-rolled each cycle
+static uint16_t emberOriginY = 0;
+static CRGB emberShown[WIDTH][HEIGHT];  // smoothed per-frame display buffer
+
+// Per-frame temporal smoothing (out of 256): how far each pixel eases toward
+// its freshly computed target each frame. Lower = smoother/softer (less
+// flicker), higher = snappier.
+#define EMBER_SMOOTH 90
+
+void fallEmbersInit() {
+  emberDirX = (random8() < 128) ? 1 : -1;
+  emberDirY = (random8() < 128) ? 1 : -1;
+  // Random origin shifts which region of the (periodic, continuous) noise field
+  // we view, so the canopy texture AND drift differ each cycle/boot instead of
+  // always settling into the same look.
+  emberOriginX = random16();
+  emberOriginY = random16();
+  fill_solid((CRGB *)emberShown, WIDTH * HEIGHT, CRGB::Black);
+}
+
+void patternFallEmbers() {
+  uint32_t ms = millis();
+
+  // Time offsets: two different speeds, direction randomized at init.
+  uint16_t rawX = (uint16_t)(ms / 14);
+  uint16_t rawY = (uint16_t)(ms / 19);
+  uint16_t timeX = (emberDirX > 0) ? rawX : (uint16_t)(0 - rawX);
+  uint16_t timeY = (emberDirY > 0) ? rawY : (uint16_t)(0 - rawY);
+
+  // Scale determines noise feature size
+  uint16_t fieldScale = 24;
+
+  for (uint8_t x = 0; x < WIDTH; x++) {
+    for (uint8_t y = 0; y < HEIGHT; y++) {
+
+      // Map grid to moving noise space (origin randomized per cycle)
+      uint16_t noiseX = (y * fieldScale) + timeX + emberOriginX;
+      uint16_t noiseY = (x * fieldScale) + timeY + emberOriginY;
+
+      // Master intensity map (spike-safe: clamps FastLED's raw sign overflow)
+      uint8_t intensity = inoise8_fixed(noiseX, noiseY);
+
+      // Secondary hue jitter (independent offset), layered on top of the
+      // intensity-driven base hue below for organic variation.
+      uint8_t hueMorph = inoise8_fixed(noiseX + 5000, noiseY + 3000);
+
+      // Ember palette: hue tracks intensity itself -- dim cells read as a
+      // dark ember red (hue ~0) instead of fading to black, and bright
+      // cells read as orange (hue ~26), with a little jitter from the
+      // secondary noise channel. Clamped (not wrapped) so it never dips
+      // into pink/magenta at the low end.
+      int16_t baseHueRaw = map(intensity, 0, 255, 0, 26);
+      int16_t hueJitter = map(hueMorph, 0, 255, -6, 6);
+      uint8_t baseHue = (uint8_t)constrain(baseHueRaw + hueJitter, 0, 32);
+      uint8_t saturation = 245;
+
+      // Brightness: dark lows, moderate highs (same curve as the source
+      // noise mechanic -- just recolored).
+      uint8_t brightness = map(intensity, 0, 255, 10, 110);
+
+      CRGB cellColor = CHSV(baseHue, saturation, brightness);
+
+      // Highlight glow: golden accent at intensity peaks (unchanged).
+      if (intensity > 185) {
+        uint8_t blendAmount = map(intensity, 185, 255, 0, 120);
+        cellColor = blend(cellColor, CRGB(180, 200, 20), blendAmount);
+      }
+
+      // Ease the shown pixel toward the target so discrete time-stepping and
+      // low-brightness quantization don't read as flicker.
+      nblend(emberShown[x][y], cellColor, EMBER_SMOOTH);
+      leds[xyToIndex(x, y)] = emberShown[x][y];
+    }
+  }
 }
 
 // ============================================================
@@ -597,6 +697,7 @@ PatternFunc patterns[] = {
   patternFallBokehMix,
   patternTumblingLeaves,
   patternFallLeafDecay,
+  patternFallEmbers,
 };
 
 void resetPatternState() {
@@ -605,6 +706,7 @@ void resetPatternState() {
     case 1: fallBokehMixInit(); break;
     case 2: tumblingLeavesInit(); break;
     case 3: fallLeafDecayInit(); break;
+    case 4: fallEmbersInit(); break;
   }
 }
 
@@ -639,7 +741,7 @@ void setup() {
   transitionStart = millis();
   fadingIn = true;
   transitioning = false;
-  Serial.println("DiffusePanel Fall Ready - 4 patterns");
+  Serial.println("DiffusePanel Fall Ready - 5 patterns");
 }
 
 void loop() {
