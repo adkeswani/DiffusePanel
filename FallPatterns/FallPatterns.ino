@@ -36,7 +36,8 @@
 #define NUM_LEDS    (WIDTH * HEIGHT)
 
 // === Pattern Cycling ===
-#define PATTERN_DURATION_MS  20000  // 20 seconds per pattern
+#define PATTERN_DURATION_MS  40000  // 40 seconds per pattern (long enough for
+                                     // Leaf Decay's full ~40s cycle)
 #define TRANSITION_MS        1000   // 1 second fade transitions
 #define NUM_PATTERNS         5
 
