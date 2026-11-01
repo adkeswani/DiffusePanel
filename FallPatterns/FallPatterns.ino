@@ -15,7 +15,7 @@
 
 // === Power Profile ===
 // Uncomment ONE of the following:
-// #define POWER_WALL
+#define POWER_WALL
 
 #ifdef POWER_WALL
   #define BRIGHTNESS       255    // Full range; FastLED power cap keeps draw safe
@@ -36,9 +36,9 @@
 #define NUM_LEDS    (WIDTH * HEIGHT)
 
 // === Pattern Cycling ===
-#define PATTERN_DURATION_MS  40000  // 40 seconds per pattern (long enough for
-                                     // Leaf Decay's full ~40s cycle)
-#define TRANSITION_MS        1000   // 1 second fade transitions
+#define PATTERN_DURATION_MS  60000  // 60 seconds per pattern (Leaf Decay's
+                                     // full ~40s cycle plus margin)
+#define TRANSITION_MS        2000   // 2 second fade transitions
 #define NUM_PATTERNS         5
 
 CRGB leds[NUM_LEDS];
