@@ -695,18 +695,18 @@ typedef void (*PatternFunc)();
 PatternFunc patterns[] = {
   patternFallRingWave,
   patternFallBokehMix,
+  patternFallEmbers,
   patternTumblingLeaves,
   patternFallLeafDecay,
-  patternFallEmbers,
 };
 
 void resetPatternState() {
   switch (currentPattern) {
     case 0: break;  // Ring Wave is derived entirely from frame; no state to reset.
     case 1: fallBokehMixInit(); break;
-    case 2: tumblingLeavesInit(); break;
-    case 3: fallLeafDecayInit(); break;
-    case 4: fallEmbersInit(); break;
+    case 2: fallEmbersInit(); break;
+    case 3: tumblingLeavesInit(); break;
+    case 4: fallLeafDecayInit(); break;
   }
 }
 
