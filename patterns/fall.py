@@ -5,10 +5,9 @@ contrast shapes; small helper functions mirroring what's easy to write in
 Arduino/FastLED) but with its own seasonal color palette so it can be ported
 to its own standalone .ino sketch later.
 
-The four "fall colors" used throughout this file -- yellow, orange, red,
-brown -- are always cycled in that order, which reads as a leaf's natural
-decay: golden yellow, turning orange, then red, then brown, before looping
-back to yellow.
+The three "fall colors" used throughout this file -- gold, orange, red --
+are always cycled in that order, which reads as a leaf's natural decay:
+golden yellow, turning orange, then deep red, before looping back to gold.
 """
 
 import math
@@ -23,38 +22,35 @@ BLACK = (0, 0, 0)
 YELLOW = (255, 195, 25)
 ORANGE = (255, 110, 10)
 RED = (210, 35, 10)
-BROWN = (120, 65, 20)
 
-# Same four colors, ordered for a smooth seasonal gradient (yellow -> orange
-# -> red -> brown), looping back to yellow.
-FALL_COLOR_STOPS = (YELLOW, ORANGE, RED, BROWN)
+# Same three colors, ordered for a smooth seasonal gradient (gold -> orange
+# -> red), looping back to gold.
+FALL_COLOR_STOPS = (YELLOW, ORANGE, RED)
 
 # HSV equivalents (hue/sat 0-255, plus a brightness cap 0-255) of the same
-# four colors, for patterns that want to crossfade smoothly through hue/sat
-# space rather than blending concrete RGB stops. The cap keeps muted colors
-# (especially brown) from being blown out to a bright orange at full value.
+# three colors, for patterns that want to crossfade smoothly through hue/sat
+# space rather than blending concrete RGB stops.
 _YELLOW_HSV = (32, 235, 255)
 _ORANGE_HSV = (20, 255, 255)
 _RED_HSV = (0, 230, 230)
-_BROWN_HSV = (14, 190, 125)
 
-FALL_PALETTE_HSV = (_YELLOW_HSV, _ORANGE_HSV, _RED_HSV, _BROWN_HSV)
+FALL_PALETTE_HSV = (_YELLOW_HSV, _ORANGE_HSV, _RED_HSV)
 
-# The same four stops, but in "bounce"/ping-pong order: yellow -> orange ->
-# red -> brown -> red -> orange -> (loops back to yellow), instead of
-# snapping straight from brown back to yellow.
+# The same three stops, but in "bounce"/ping-pong order: gold -> orange ->
+# red -> orange -> (loops back to gold), instead of snapping straight from
+# red back to gold.
 FALL_PALETTE_HSV_BOUNCE = FALL_PALETTE_HSV + FALL_PALETTE_HSV[-2:0:-1]
 
 # How long to hold each color, and how long to crossfade to the next one.
-FALL_PALETTE_HOLD_FRAMES = 420   # ~7s at 60fps
-FALL_PALETTE_FADE_FRAMES = 180   # ~3s crossfade
+FALL_PALETTE_HOLD_FRAMES = 150   # ~2.5s at 60fps
+FALL_PALETTE_FADE_FRAMES = 75    # ~1.25s crossfade
 FALL_PALETTE_STEP_FRAMES = FALL_PALETTE_HOLD_FRAMES + FALL_PALETTE_FADE_FRAMES
 
 
 def get_fall_palette_color(frame: int) -> tuple[int, int, int]:
-    """Return the current (hue, sat, cap) based on frame, slowly and
-    smoothly bouncing back and forth through FALL_PALETTE_HSV_BOUNCE
-    (yellow -> orange -> red -> brown -> red -> orange -> loop)."""
+    """Return the current (hue, sat, cap) based on frame, bouncing back
+    and forth through FALL_PALETTE_HSV_BOUNCE
+    (gold -> orange -> red -> orange -> loop)."""
     stops = FALL_PALETTE_HSV_BOUNCE
     total_cycle = FALL_PALETTE_STEP_FRAMES * len(stops)
     pos = frame % total_cycle
@@ -209,7 +205,7 @@ class _FallOrbIndependent(_FallOrb):
 
 class FallBokehMix(Pattern):
     """Same bokeh mechanic as FallBokeh, but every pixel independently
-    picks its own random fall color (yellow/orange/red/brown) instead of
+    picks its own random fall color (gold/orange/red) instead of
     the whole panel sharing one synced color at a time."""
 
     name = "Fall Bokeh Mix"
@@ -229,8 +225,8 @@ class FallBokehMix(Pattern):
 
 class FallRingWave(Pattern):
     """A thick ring that's always fully lit, with a brighter wave of color
-    chasing around it, recolored so the ring's base color smoothly cycles
-    through the fall color spectrum (yellow -> orange -> red -> brown ->
+    chasing around it, recolored so the ring's base color cycles
+    through the fall color spectrum (gold -> orange -> red -> orange ->
     loop) instead of a full rainbow hue sweep."""
 
     name = "Fall Ring Wave"
@@ -289,8 +285,7 @@ class FallRingWave(Pattern):
                         pixel_sat = sat
                         pixel_cap = cap
 
-                    # Clamp to this color's brightness cap so brown stays
-                    # muted instead of blowing out to a bright orange.
+                    # Clamp to this color's brightness cap.
                     brightness = min(brightness, pixel_cap)
                     leds[idx] = hsv_to_rgb(pixel_hue, pixel_sat, brightness)
                 else:
@@ -370,19 +365,19 @@ class TumblingLeaves(Pattern):
 
 class FallLeafDecay(Pattern):
     """A full screen of yellow pixels that slowly decays: the color
-    bleeds from yellow through orange and red into brown while individual
+    bleeds from gold through orange into red while individual
     pixels fade out one by one, like leaves falling. The last pixels left
     standing trace a branching, vein-like skeleton that itself recedes
     from its tips back to its root -- before everything goes dark and the
-    cycle loops back to a fresh, full yellow screen.
+    cycle loops back to a fresh, full gold screen.
     """
 
     name = "Leaf Decay"
 
     _CYCLE_FRAMES = 2400          # full decay-and-reset cycle length
-    _COLOR_DECAY_FRACTION = 0.75  # color reaches brown by 75% through
+    _COLOR_DECAY_FRACTION = 0.75  # color reaches red by 75% through
     _FADE_IN_FRACTION = 0.08      # the whole screen fades back in to full
-                                   # yellow over this fraction of the cycle,
+                                   # gold over this fraction of the cycle,
                                    # right after a full decay/reset
     _MAX_VEIN_PIXELS = 90
 
@@ -446,9 +441,9 @@ class FallLeafDecay(Pattern):
 
     @staticmethod
     def _decay_color(t: float) -> tuple[int, int, int]:
-        """One-way smooth crossfade through yellow -> orange -> red ->
-        brown as t goes 0 -> 1 (no bounce -- this only runs once per
-        decay cycle, unlike the looping fall palette)."""
+        """One-way smooth crossfade through gold -> orange -> red as t
+        goes 0 -> 1 (no bounce -- this only runs once per decay cycle,
+        unlike the looping fall palette)."""
         stops = FALL_PALETTE_HSV
         segments = len(stops) - 1
         pos = min(max(t, 0.0), 1.0) * segments

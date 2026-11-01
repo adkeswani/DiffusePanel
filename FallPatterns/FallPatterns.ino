@@ -161,13 +161,13 @@ void patternFallEmbers() {
 
       // Ember palette: hue tracks intensity itself -- dim cells read as a
       // dark ember red (hue ~0) instead of fading to black, and bright
-      // cells read as orange (hue ~26), with a little jitter from the
-      // secondary noise channel. Clamped (not wrapped) so it never dips
-      // into pink/magenta at the low end.
-      int16_t baseHueRaw = map(intensity, 0, 255, 0, 26);
-      int16_t hueJitter = map(hueMorph, 0, 255, -6, 6);
-      uint8_t baseHue = (uint8_t)constrain(baseHueRaw + hueJitter, 0, 32);
-      uint8_t saturation = 245;
+      // cells read as a clearly distinct orange (hue ~40), with a little
+      // jitter from the secondary noise channel. Clamped (not wrapped) so
+      // it never dips into pink/magenta at the low end.
+      int16_t baseHueRaw = map(intensity, 0, 255, 0, 40);
+      int16_t hueJitter = map(hueMorph, 0, 255, -8, 8);
+      uint8_t baseHue = (uint8_t)constrain(baseHueRaw + hueJitter, 0, 48);
+      uint8_t saturation = 255;
 
       // Brightness: dark lows, moderate highs (same curve as the source
       // noise mechanic -- just recolored).
@@ -193,49 +193,37 @@ void patternFallEmbers() {
 // Fall color palette
 // ============================================================
 
-// Concrete RGB "fall colors" for patterns that pick from a fixed set of
-// discrete colors (as opposed to a smoothly crossfading hue).
-static const CRGB FALL_COLOR_STOPS[4] = {
-  CRGB(255, 195, 25),  // yellow
-  CRGB(255, 110, 10),  // orange
-  CRGB(210, 35, 10),   // red
-  CRGB(120, 65, 20),   // brown
-};
 
 struct FallHSV {
   uint8_t hue;
   uint8_t sat;
-  uint8_t cap;  // brightness cap -- keeps muted colors (brown) from
-                // blowing out to a bright orange at full value.
+  uint8_t cap;  // brightness cap
 };
 
-// Same four colors, as (hue, sat, cap) for smooth hue/sat crossfades.
-static const FallHSV FALL_PALETTE_HSV[4] = {
-  {32, 235, 255},  // yellow
+// Same three colors, as (hue, sat, cap) for smooth hue/sat crossfades.
+static const FallHSV FALL_PALETTE_HSV[3] = {
+  {32, 235, 255},  // gold
   {20, 255, 255},  // orange
   {0, 230, 230},   // red
-  {14, 190, 125},  // brown
 };
 
-// The same four stops, but in "bounce"/ping-pong order: yellow -> orange ->
-// red -> brown -> red -> orange -> (loops back to yellow).
-static const FallHSV FALL_PALETTE_HSV_BOUNCE[6] = {
-  {32, 235, 255},  // yellow
+// The same three stops, but in "bounce"/ping-pong order: gold -> orange ->
+// red -> orange -> (loops back to gold).
+static const FallHSV FALL_PALETTE_HSV_BOUNCE[4] = {
+  {32, 235, 255},  // gold
   {20, 255, 255},  // orange
-  {0, 230, 230},   // red
-  {14, 190, 125},  // brown
   {0, 230, 230},   // red
   {20, 255, 255},  // orange
 };
 
-#define FALL_PALETTE_HOLD_FRAMES  420  // ~7s at 60fps
-#define FALL_PALETTE_FADE_FRAMES  180  // ~3s crossfade
+#define FALL_PALETTE_HOLD_FRAMES  150  // ~2.5s at 60fps
+#define FALL_PALETTE_FADE_FRAMES  75   // ~1.25s crossfade
 #define FALL_PALETTE_STEP_FRAMES  (FALL_PALETTE_HOLD_FRAMES + FALL_PALETTE_FADE_FRAMES)
 
-// Current (hue, sat, cap) based on frame, slowly and smoothly bouncing back
-// and forth through FALL_PALETTE_HSV_BOUNCE.
+// Current (hue, sat, cap) based on frame, bouncing back and forth through
+// FALL_PALETTE_HSV_BOUNCE.
 FallHSV getFallPaletteColor(uint32_t f) {
-  const uint8_t numStops = 6;
+  const uint8_t numStops = 4;
   uint32_t totalCycle = (uint32_t)FALL_PALETTE_STEP_FRAMES * numStops;
   uint32_t pos = f % totalCycle;
 
@@ -293,7 +281,7 @@ void fallOrbReset(FallOrb &o) {
   o.holdDuration = randRange(20, 80);
   o.fadeOutDuration = randRange(50, 150);
 
-  uint8_t stopIdx = randRange(0, 3);
+  uint8_t stopIdx = randRange(0, 2);
   o.hue = FALL_PALETTE_HSV[stopIdx].hue;
   o.sat = FALL_PALETTE_HSV[stopIdx].sat;
   o.cap = FALL_PALETTE_HSV[stopIdx].cap;
@@ -418,8 +406,7 @@ void patternFallRingWave() {
           pixelCap = base.cap;
         }
 
-        // Clamp to this color's brightness cap so brown stays muted
-        // instead of blowing out to a bright orange.
+        // Clamp to this color's brightness cap.
         brightness = min(brightness, (int16_t)pixelCap);
         leds[idx] = CHSV(pixelHue, pixelSat, (uint8_t)brightness);
       } else {
@@ -440,7 +427,7 @@ void patternFallRingWave() {
 struct TumblingLeaf {
   float x, y;
   float fallSpeed;
-  CRGB color;
+  uint8_t hue, sat, cap;
   float tumbleFreq;
   float tumblePhase;
   float minBrightness;
@@ -456,7 +443,12 @@ void tumblingLeafReset(TumblingLeaf &l) {
   l.x = (float)randRange(0, WIDTH - 1);
   l.y = randFloat(-4.0f, -0.5f);
   l.fallSpeed = randFloat(0.012f, 0.028f);
-  l.color = FALL_COLOR_STOPS[randRange(0, 3)];
+  {
+    uint8_t stopIdx = randRange(0, 2);
+    l.hue = FALL_PALETTE_HSV[stopIdx].hue;
+    l.sat = FALL_PALETTE_HSV[stopIdx].sat;
+    l.cap = FALL_PALETTE_HSV[stopIdx].cap;
+  }
 
   l.tumbleFreq = randFloat(0.15f, 0.35f);
   l.tumblePhase = randFloat(0.0f, 2.0f * PI);
@@ -524,25 +516,24 @@ void patternTumblingLeaves() {
     int x = (int)roundf(leaves[i].x);
     int y = (int)roundf(leaves[i].y);
     if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
-      CRGB c = leaves[i].color;
-      c.nscale8((uint8_t)(tumblingLeafBrightness(leaves[i]) * 255));
-      leds[xyToIndex(x, y)] = c;
+      uint8_t v = (uint8_t)(tumblingLeafBrightness(leaves[i]) * leaves[i].cap);
+      leds[xyToIndex(x, y)] = CHSV(leaves[i].hue, leaves[i].sat, v);
     }
   }
 }
 
 // ============================================================
 // Pattern: Leaf Decay
-// A full screen of yellow pixels that slowly decays: the color bleeds
-// from yellow through orange and red into brown while individual pixels
+// A full screen of gold pixels that slowly decays: the color bleeds
+// from gold through orange into red while individual pixels
 // fade out one by one, like leaves falling. The last pixels left standing
 // trace a branching, vein-like skeleton that itself recedes from its tips
 // back to its root -- before everything goes dark and the cycle loops
-// back to a fresh, full yellow screen.
+// back to a fresh, full gold screen.
 // ============================================================
 #define FALL_DECAY_CYCLE_FRAMES        2400  // full decay-and-reset cycle length
-#define FALL_DECAY_COLOR_FRACTION      0.75f // color reaches brown by 75% through
-#define FALL_DECAY_FADE_IN_FRACTION    0.08f // fade back in to full yellow over
+#define FALL_DECAY_COLOR_FRACTION      0.75f // color reaches red by 75% through
+#define FALL_DECAY_FADE_IN_FRACTION    0.08f // fade back in to full gold over
                                               // this fraction, right after reset
 #define FALL_DECAY_MAX_VEIN_PIXELS     90
 #define FALL_DECAY_MAX_TIPS            128
@@ -638,11 +629,11 @@ void fallLeafDecayBuildOrder() {
   }
 }
 
-// One-way smooth crossfade through yellow -> orange -> red -> brown as t
+// One-way smooth crossfade through gold -> orange -> red as t
 // goes 0 -> 1 (no bounce -- this only runs once per decay cycle, unlike
 // the looping fall palette).
 FallHSV fallDecayColor(float t) {
-  const uint8_t segments = 3;  // len(FALL_PALETTE_HSV) - 1
+  const uint8_t segments = 2;  // len(FALL_PALETTE_HSV) - 1
   t = constrain(t, 0.0f, 1.0f);
   float pos = t * segments;
   uint8_t idx = (uint8_t)pos;
