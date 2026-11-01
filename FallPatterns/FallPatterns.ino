@@ -36,9 +36,8 @@
 #define NUM_LEDS    (WIDTH * HEIGHT)
 
 // === Pattern Cycling ===
-#define PATTERN_DURATION_MS  60000  // 60 seconds per pattern (Leaf Decay's
-                                     // full cycle is ~40s at 60fps)
-#define TRANSITION_MS        2000   // 2 second fade transitions
+#define PATTERN_DURATION_MS  20000  // 20 seconds per pattern
+#define TRANSITION_MS        1000   // 1 second fade transitions
 #define NUM_PATTERNS         5
 
 CRGB leds[NUM_LEDS];
