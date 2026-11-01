@@ -49,6 +49,19 @@ bool transitioning = false;
 uint32_t transitionStart = 0;
 bool fadingIn = true;  // true = fading in at start, false = fading out before switch
 
+// Forward declarations for structs (needed by Arduino auto-prototyping: the
+// IDE inserts its generated function prototypes here, before these structs
+// are actually defined further down the file).
+struct FallHSV;
+struct FallOrb;
+struct TumblingLeaf;
+FallHSV getFallPaletteColor(uint32_t f);
+FallHSV fallDecayColor(float t);
+void fallOrbReset(FallOrb &o);
+void tumblingLeafReset(TumblingLeaf &l);
+void tumblingLeafAdvance(TumblingLeaf &l);
+float tumblingLeafBrightness(TumblingLeaf &l);
+
 // === Coordinate Mapping (serpentine wiring) ===
 // The physical panel is mounted/wired 90 degrees rotated relative to the
 // logical x/y axes used by every pattern (and by the Python simulator), so
